@@ -499,7 +499,7 @@ class TerminalRenderer(Renderer):
                 colors[screen_y][screen_x] = self.ui_colors.get(item.overlay_type, "")
                     
             elif isinstance(item, UnitRenderData):
-                symbol = self.unit_symbols.get(item.unit_type, "?")
+                symbol = self.unit_symbols.get(item.unit_type.lower(), "?")
                 grid[screen_y][screen_x] = symbol
                 color = self.team_colors.get(item.team, "")
                 

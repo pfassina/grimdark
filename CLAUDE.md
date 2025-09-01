@@ -15,7 +15,7 @@ python tests/test_architecture.py
 # Run auto-playing demo with simple renderer (uses default scenario)
 python demos/demo.py
 
-# Play interactive terminal version (uses default scenario)
+# Play interactive terminal version (uses default scenario) - NOTE: Requires interactive terminal
 python main.py
 
 # Play specific scenarios
@@ -34,6 +34,44 @@ python demos/demo_map_loader.py assets/maps/fortress
 # Update Nix flake dependencies
 nix flake update --update-input nixpkgs
 ```
+
+## Testing Workflow for Claude Code
+
+**IMPORTANT**: `main.py` uses `TerminalRenderer` which requires an interactive terminal that Claude Code cannot access. For testing during development, use the following workflow:
+
+### Available Testing Methods
+
+1. **Quick Demo Testing**: `python demos/demo.py`
+   - Uses `SimpleRenderer` (non-interactive)
+   - Auto-plays for 10 frames then quits
+   - Limited input (only moves cursor right)
+   - Good for basic functionality verification
+
+2. **Architecture Tests**: `python tests/test_architecture.py`
+   - Validates core architecture principles
+   - Tests rendering separation
+   - No visual output required
+
+3. **Scenario Tests**: Run scenario-specific tests
+   - `python tests/test_scenario.py`
+   - `python tests/test_objectives.py` 
+   - `python tests/test_all_scenarios.py`
+
+### Testing New Features
+
+When implementing new features that require specific user interactions:
+
+1. **Create feature-specific demo scripts** in `demos/` directory
+2. **Extend SimpleRenderer** with scripted input sequences if needed
+3. **Add unit tests** for game logic components
+4. **Verify through existing test suite** that architecture is maintained
+
+Current `demos/demo.py` limitations:
+- Only sends RIGHT key every 3 frames
+- Quits after 10 frames  
+- Won't exercise combat, abilities, objectives, or complex interactions
+
+For comprehensive feature testing, create targeted demo scripts or enhance the simple renderer with configurable input sequences.
 
 ## Development Environment
 

@@ -113,7 +113,7 @@ class SimpleRenderer(Renderer):
                 grid[screen_y][screen_x] = symbol
                     
             elif isinstance(item, UnitRenderData):
-                symbol = self.unit_symbols.get(item.unit_type, "?")
+                symbol = self.unit_symbols.get(item.unit_type.lower(), "?")
                 grid[screen_y][screen_x] = symbol
                 
             elif isinstance(item, CursorRenderData):

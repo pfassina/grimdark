@@ -1,0 +1,115 @@
+# Defense of Fort Grimhold
+# A challenging defense scenario with multiple victory conditions
+# Author: Campaign Designer
+
+name: Defense of Fort Grimhold
+description: Defend the fortress against enemy assault for 10 turns
+author: Campaign Designer
+
+map:
+  source: assets/maps/fortress
+
+# Common objective and unit patterns for reuse
+_defaults:
+  # Common objectives
+  objectives: &objective_patterns
+    defeat_all: &defeat_all_enemies
+      type: defeat_all_enemies
+      description: Defeat all enemies
+      
+    survive_defense: &survive_turns
+      type: survive_turns
+      turns: 10
+      description: Hold the fort for 10 turns
+      
+    protect_leader: &protect_leader
+      type: protect_unit
+      unit_name: Sir Aldric
+      description: Sir Aldric must survive
+      
+    defend_position: &defend_fort
+      type: position_captured
+      position: [7, 9]
+      description: Don't let enemies capture the fort
+  
+  # Common stat overrides for enhanced units
+  stats: &enhanced_stats
+    hero_knight: &hero_knight_stats
+      hp_max: 35
+      strength: 9
+      defense: 6
+      
+    enemy_captain: &captain_stats
+      hp_max: 28
+      strength: 8
+
+# Unit definitions - organized by team
+units:
+  # === PLAYER FORCES ===
+  # Main hero with enhanced stats
+  - name: Sir Aldric
+    class: KNIGHT
+    team: PLAYER
+    position: [7, 9]
+    stats_override:
+      <<: *hero_knight_stats
+      
+  # Support ranged unit
+  - name: Archer Elena
+    class: ARCHER
+    team: PLAYER
+    position: [5, 8]
+    
+  # Magical support
+  - name: Mage Theron
+    class: MAGE
+    team: PLAYER
+    position: [9, 8]
+
+  # === ENEMY ASSAULT FORCE ===
+  # Enemy leader
+  - name: Enemy Captain
+    class: WARRIOR
+    team: ENEMY
+    position: [7, 1]
+    stats_override:
+      <<: *captain_stats
+      
+  # Ranged support
+  - name: Enemy Archer 1
+    class: ARCHER
+    team: ENEMY
+    position: [5, 2]
+    
+  - name: Enemy Archer 2
+    class: ARCHER
+    team: ENEMY
+    position: [9, 2]
+    
+  # Heavy assault units
+  - name: Enemy Knight 1
+    class: KNIGHT
+    team: ENEMY
+    position: [3, 1]
+    
+  - name: Enemy Knight 2
+    class: KNIGHT
+    team: ENEMY
+    position: [11, 1]
+
+# Victory and defeat conditions using anchors
+objectives:
+  victory:
+    - <<: *survive_turns
+    - <<: *defeat_all_enemies
+      description: Or defeat all enemies
+      
+  defeat:
+    - <<: *protect_leader
+    - <<: *defend_fort
+
+# Game settings
+settings:
+  turn_limit: 15            # Give some buffer beyond survival objective
+  starting_team: PLAYER
+  fog_of_war: false         # Keep visibility clear for tactical play

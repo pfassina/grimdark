@@ -1,0 +1,109 @@
+# Unit Templates - YAML Configuration
+# This file defines unit class templates with component initialization values.
+# Uses YAML anchors for reusability and inheritance patterns.
+
+# Common stat patterns for reuse
+_stat_defaults:
+  # Melee combat defaults
+  melee_combat: &melee_combat
+    attack_range_min: 1
+    attack_range_max: 1
+
+  # Ranged combat defaults  
+  ranged_combat: &ranged_combat
+    attack_range_min: 2
+    attack_range_max: 3
+
+  # Standard movement
+  standard_movement: &standard_movement
+    movement_points: 3
+
+  # Fast movement
+  fast_movement: &fast_movement
+    movement_points: 4
+
+  # Very fast movement
+  very_fast_movement: &very_fast_movement
+    movement_points: 5
+
+# Unit class templates
+unit_templates:
+  KNIGHT:
+    # Heavy armored melee fighter
+    health:
+      hp_max: 25
+    movement:
+      <<: *standard_movement
+    combat:
+      <<: *melee_combat
+      strength: 7
+      defense: 5
+    status:
+      speed: 3
+
+  ARCHER:
+    # Ranged attacker with mobility
+    health:
+      hp_max: 18
+    movement:
+      <<: *fast_movement
+    combat:
+      <<: *ranged_combat
+      strength: 5
+      defense: 2
+    status:
+      speed: 6
+
+  MAGE:
+    # Magic user with limited range versatility
+    health:
+      hp_max: 15
+    movement:
+      <<: *standard_movement
+    combat:
+      strength: 2
+      defense: 1
+      attack_range_min: 1
+      attack_range_max: 2  # Can attack adjacent or at range
+    status:
+      speed: 4
+
+  PRIEST:
+    # Support unit with healing/buffs potential
+    health:
+      hp_max: 16
+    movement:
+      <<: *standard_movement
+    combat:
+      strength: 2
+      defense: 2
+      attack_range_min: 1
+      attack_range_max: 2  # Can attack adjacent or at range
+    status:
+      speed: 3
+
+  THIEF:
+    # Fast, agile melee attacker
+    health:
+      hp_max: 16
+    movement:
+      <<: *very_fast_movement
+    combat:
+      <<: *melee_combat
+      strength: 4
+      defense: 1
+    status:
+      speed: 8
+
+  WARRIOR:
+    # Balanced melee fighter
+    health:
+      hp_max: 22
+    movement:
+      <<: *fast_movement
+    combat:
+      <<: *melee_combat
+      strength: 6
+      defense: 3
+    status:
+      speed: 5

@@ -1,0 +1,96 @@
+# The Great Escape
+# A time-critical escape scenario with mobility challenges
+# Author: Campaign Designer
+
+name: The Great Escape
+description: Reach the escape point before enemy reinforcements arrive
+author: Campaign Designer
+
+map:
+  source: assets/maps/escape_mission
+
+# Common patterns for escape scenarios
+_escape_patterns:
+  # Objectives
+  objectives: &escape_objectives
+    escape_success: &reach_escape
+      type: reach_position
+      position: [5, 8]
+      unit_name: Escape Leader
+      description: Get the Escape Leader to the marked position
+      
+    mission_failure: &mission_failed
+      type: all_units_defeated
+      description: Don't lose all your units
+      
+    time_limit: &time_pressure
+      type: turn_limit
+      turns: 12
+      description: Escape before turn 12
+
+  # Special unit stats for escape scenario
+  stats: &escape_stats
+    enhanced_mobility: &fast_escape
+      movement: 6     # Extra fast for escape leader
+      hp_max: 20      # Slightly more durable
+      
+    wounded_movement: &injured
+      movement: 2     # Severely limited mobility
+      hp_current: 10  # Already wounded
+
+# Unit definitions - organized by role
+units:
+  # === ESCAPE TEAM ===
+  # Primary escape target - enhanced mobility
+  - name: Escape Leader
+    class: THIEF
+    team: PLAYER
+    position: [5, 1]
+    stats_override:
+      <<: *fast_escape
+      
+  # Wounded companion - liability but must survive
+  - name: Wounded Knight
+    class: KNIGHT
+    team: PLAYER
+    position: [6, 1]
+    stats_override:
+      <<: *injured
+
+  # === PRISON GUARDS ===
+  # Immediate threat guards
+  - name: Prison Guard 1
+    class: WARRIOR
+    team: ENEMY
+    position: [3, 3]
+    
+  - name: Prison Guard 2
+    class: WARRIOR
+    team: ENEMY
+    position: [8, 3]
+    
+  # Patrol units blocking escape route
+  - name: Patrol Archer 1
+    class: ARCHER
+    team: ENEMY
+    position: [2, 6]
+    
+  - name: Patrol Archer 2
+    class: ARCHER
+    team: ENEMY
+    position: [9, 6]
+
+# Victory and defeat conditions
+objectives:
+  victory:
+    - <<: *reach_escape
+      
+  defeat:
+    - <<: *mission_failed
+    - <<: *time_pressure
+
+# Game settings - time pressure is critical
+settings:
+  turn_limit: 12            # Tight time limit creates urgency
+  starting_team: PLAYER
+  fog_of_war: false         # Players need to see patrol patterns

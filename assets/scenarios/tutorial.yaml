@@ -1,0 +1,58 @@
+# Tutorial - First Battle
+# Learn the basics of combat with a simple 1v1 scenario
+# Author: Tutorial Designer
+
+name: Tutorial - First Battle
+description: Learn the basics of combat
+author: Tutorial Designer
+
+map:
+  source: assets/maps/tutorial
+
+# Common objective patterns for reuse
+_objective_defaults: &objective_defaults
+  defeat_all_enemies: &defeat_enemies
+    type: defeat_all_enemies
+    description: Defeat all enemies
+
+  all_defeated: &all_defeated
+    type: all_units_defeated
+    description: Don't let your units fall!
+
+  protect_hero: &protect_hero
+    type: protect_unit
+    description: Don't let your knight fall!
+
+# Unit definitions
+units:
+  # Player units
+  - name: Hero Knight
+    class: KNIGHT
+    team: PLAYER
+    position: [1, 2]
+    stats_override:
+      hp_max: 30  # Enhanced HP for tutorial
+
+  # Enemy units  
+  - name: Training Dummy
+    class: WARRIOR
+    team: ENEMY
+    position: [6, 2]
+    stats_override:
+      hp_max: 10      # Weaker HP for easy victory
+      strength: 2     # Reduced damage
+
+# Victory and defeat conditions
+objectives:
+  victory:
+    - <<: *defeat_enemies
+      description: Defeat the training dummy
+      
+  defeat:
+    - <<: *all_defeated
+
+# Game settings
+settings:
+  turn_limit: null          # No turn limit for tutorial
+  starting_team: PLAYER
+  fog_of_war: false         # Keep it simple for tutorial

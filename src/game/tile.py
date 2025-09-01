@@ -1,0 +1,52 @@
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Optional
+
+from ..core.game_enums import TerrainType
+from ..core.game_info import TERRAIN_DATA
+
+if TYPE_CHECKING:
+    from .unit import Unit
+
+
+@dataclass
+class Tile:
+    x: int
+    y: int
+    terrain_type: TerrainType
+    elevation: int = 0
+    
+    def __post_init__(self):
+        self._info = TERRAIN_DATA[self.terrain_type]
+    
+    @property
+    def name(self) -> str:
+        return self._info.name
+    
+    @property
+    def symbol(self) -> str:
+        return self._info.symbol
+    
+    @property
+    def move_cost(self) -> int:
+        return self._info.move_cost
+    
+    @property
+    def defense_bonus(self) -> int:
+        return self._info.defense_bonus + self.elevation
+    
+    @property
+    def avoid_bonus(self) -> int:
+        return self._info.avoid_bonus
+    
+    @property
+    def blocks_movement(self) -> bool:
+        return self._info.blocks_movement
+    
+    @property
+    def blocks_vision(self) -> bool:
+        return self._info.blocks_vision
+    
+    def can_enter(self, unit: Optional["Unit"] = None) -> bool:
+        if self.blocks_movement:
+            return False
+        return True

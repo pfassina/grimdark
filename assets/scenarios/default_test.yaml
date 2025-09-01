@@ -1,0 +1,70 @@
+# Default Test Battle  
+# A balanced test scenario for development and demos
+# Author: System
+
+name: Default Test Battle
+description: Default test scenario with varied terrain and balanced combat
+author: System
+
+map:
+  source: assets/maps/default_test
+
+# Common test patterns
+_test_defaults:
+  # Standard objectives for testing
+  objectives: &test_objectives
+    defeat_enemies: &defeat_all
+      type: defeat_all_enemies
+      description: Defeat all enemy units
+      
+    unit_survival: &keep_alive
+      type: all_units_defeated  
+      description: Don't lose all your units
+
+# Unit definitions - balanced 3v3 setup
+units:
+  # === PLAYER TEAM ===
+  - name: Knight 1
+    class: KNIGHT
+    team: PLAYER
+    position: [2, 2]
+    
+  - name: Archer 1
+    class: ARCHER
+    team: PLAYER
+    position: [4, 3]
+    
+  - name: Mage 1
+    class: MAGE
+    team: PLAYER
+    position: [3, 5]
+
+  # === ENEMY TEAM ===  
+  - name: Enemy Knight
+    class: KNIGHT
+    team: ENEMY
+    position: [15, 8]
+    
+  - name: Enemy Archer
+    class: ARCHER
+    team: ENEMY
+    position: [14, 7]
+    
+  - name: Enemy Warrior
+    class: WARRIOR
+    team: ENEMY
+    position: [16, 9]
+
+# Simple victory/defeat conditions for testing
+objectives:
+  victory:
+    - <<: *defeat_all
+      
+  defeat:
+    - <<: *keep_alive
+
+# Standard test settings
+settings:
+  turn_limit: null          # No time pressure for testing
+  starting_team: PLAYER
+  fog_of_war: false         # Full visibility for development

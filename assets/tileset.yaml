@@ -1,0 +1,100 @@
+# Grimdark SRPG Tileset Configuration
+# Maps tile IDs to terrain types and gameplay properties
+#
+# This file serves as the single source of truth for:
+# - Terrain gameplay properties (move cost, defense, etc.)
+# - Terrain type mappings for game logic
+#
+# Visual properties (symbols, colors, sprites) are owned by individual renderers
+
+tiles:
+  # Tile ID 1: Plain terrain
+  1:
+    terrain_type: "plain"
+    name: "Plain"
+    move_cost: 1
+    defense_bonus: 0
+    avoid_bonus: 0
+    blocks_movement: false
+    blocks_vision: false
+
+  # Tile ID 2: Forest terrain  
+  2:
+    terrain_type: "forest"
+    name: "Forest"
+    move_cost: 2
+    defense_bonus: 1
+    avoid_bonus: 20
+    blocks_movement: false
+    blocks_vision: false
+
+  # Tile ID 3: Mountain terrain
+  3:
+    terrain_type: "mountain"
+    name: "Mountain"
+    move_cost: 3
+    defense_bonus: 2
+    avoid_bonus: 30
+    blocks_movement: false
+    blocks_vision: false
+
+  # Tile ID 4: Water terrain
+  4:
+    terrain_type: "water"
+    name: "Water"
+    move_cost: 99
+    defense_bonus: 0
+    avoid_bonus: 0
+    blocks_movement: true
+    blocks_vision: false
+
+  # Tile ID 5: Road terrain
+  5:
+    terrain_type: "road"
+    name: "Road"
+    move_cost: 1
+    defense_bonus: 0
+    avoid_bonus: 0
+    blocks_movement: false
+    blocks_vision: false
+
+  # Tile ID 6: Fort terrain
+  6:
+    terrain_type: "fort"
+    name: "Fort"
+    move_cost: 1
+    defense_bonus: 3
+    avoid_bonus: 10
+    blocks_movement: false
+    blocks_vision: false
+
+  # Tile ID 7: Bridge terrain
+  7:
+    terrain_type: "bridge"
+    name: "Bridge"
+    move_cost: 1
+    defense_bonus: 0
+    avoid_bonus: 0
+    blocks_movement: false
+    blocks_vision: false
+
+  # Tile ID 8: Wall terrain
+  8:
+    terrain_type: "wall"
+    name: "Wall"
+    move_cost: 99
+    defense_bonus: 0
+    avoid_bonus: 0
+    blocks_movement: true
+    blocks_vision: true
+
+# Terrain type to tile ID mapping (for game logic)
+terrain_to_tile_id:
+  "plain": 1
+  "forest": 2
+  "mountain": 3
+  "water": 4
+  "road": 5
+  "fort": 6
+  "bridge": 7
+  "wall": 8

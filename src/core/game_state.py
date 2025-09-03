@@ -16,6 +16,7 @@ class BattlePhase(Enum):
     UNIT_SELECTION = auto()
     UNIT_MOVING = auto()
     ACTION_MENU = auto()
+    TARGETING = auto()  # New phase for target selection with battle forecast
     UNIT_ACTING = auto()
     ENEMY_TURN = auto()
     TURN_END = auto()
@@ -33,6 +34,10 @@ class GameState:
     selected_tile_x: Optional[int] = None
     selected_tile_y: Optional[int] = None
     
+    # Original position tracking for cancellation
+    original_unit_x: Optional[int] = None
+    original_unit_y: Optional[int] = None
+    
     cursor_x: int = 0
     cursor_y: int = 0
     
@@ -47,8 +52,18 @@ class GameState:
     action_menu_items: list[str] = field(default_factory=list)
     action_menu_selection: int = 0
     
+    # Strategic TUI overlay states
+    active_overlay: Optional[str] = None  # "objectives", "help", "minimap"
+    active_dialog: Optional[str] = None   # "confirm_end_turn", etc.
+    dialog_selection: int = 0             # For dialog option selection
+    active_forecast: bool = False         # Battle forecast during targeting
+    
     movement_range: list[tuple] = field(default_factory=list)
     attack_range: list[tuple] = field(default_factory=list)
+    
+    # Attack targeting state
+    selected_target: Optional[tuple[int, int]] = None
+    aoe_tiles: list[tuple[int, int]] = field(default_factory=list)
     
     # Unit cycling state
     selectable_units: list[str] = field(default_factory=list)
@@ -64,13 +79,20 @@ class GameState:
         self.selected_unit_id = None
         self.selected_tile_x = None
         self.selected_tile_y = None
+        self.original_unit_x = None
+        self.original_unit_y = None
         self.movement_range.clear()
         self.attack_range.clear()
+        self.selected_target = None
+        self.aoe_tiles.clear()
         self.selectable_units.clear()
         self.current_unit_index = 0
         self.targetable_enemies.clear()
         self.current_target_index = 0
         self.close_action_menu()
+        self.close_overlay()
+        self.close_dialog()
+        self.stop_forecast()
     
     def set_cursor_position(self, x: int, y: int) -> None:
         self.cursor_x = x
@@ -134,6 +156,57 @@ class GameState:
     def move_action_menu_selection(self, direction: int) -> None:
         if self.active_action_menu and self.action_menu_items:
             self.action_menu_selection = (self.action_menu_selection + direction) % len(self.action_menu_items)
+    
+    # Strategic TUI overlay methods
+    def open_overlay(self, overlay_type: str) -> None:
+        """Open a full-screen overlay (objectives, help, minimap)."""
+        self.active_overlay = overlay_type
+    
+    def close_overlay(self) -> None:
+        """Close the active overlay."""
+        self.active_overlay = None
+    
+    def is_overlay_open(self) -> bool:
+        """Check if any overlay is open."""
+        return self.active_overlay is not None
+    
+    def open_dialog(self, dialog_type: str) -> None:
+        """Open a confirmation dialog."""
+        self.active_dialog = dialog_type
+        self.dialog_selection = 0
+    
+    def close_dialog(self) -> None:
+        """Close the active dialog."""
+        self.active_dialog = None
+        self.dialog_selection = 0
+    
+    def is_dialog_open(self) -> bool:
+        """Check if any dialog is open."""
+        return self.active_dialog is not None
+    
+    def move_dialog_selection(self, direction: int) -> None:
+        """Move dialog selection (0=Yes, 1=No typically)."""
+        self.dialog_selection = (self.dialog_selection + direction) % 2
+    
+    def get_dialog_selection(self) -> int:
+        """Get current dialog selection."""
+        return self.dialog_selection
+    
+    def start_forecast(self) -> None:
+        """Start battle forecast display."""
+        self.active_forecast = True
+    
+    def stop_forecast(self) -> None:
+        """Stop battle forecast display."""
+        self.active_forecast = False
+    
+    def is_forecast_active(self) -> bool:
+        """Check if battle forecast is active."""
+        return self.active_forecast
+    
+    def is_any_modal_open(self) -> bool:
+        """Check if any modal UI is open (overlay, dialog, forecast)."""
+        return self.is_overlay_open() or self.is_dialog_open() or self.is_forecast_active()
     
     def update_camera_to_cursor(self, viewport_width: int, viewport_height: int) -> None:
         margin = 3

@@ -8,11 +8,13 @@ _stat_defaults:
   melee_combat: &melee_combat
     attack_range_min: 1
     attack_range_max: 1
+    aoe_pattern: "single"
 
   # Ranged combat defaults  
   ranged_combat: &ranged_combat
     attack_range_min: 2
     attack_range_max: 3
+    aoe_pattern: "single"
 
   # Standard movement
   standard_movement: &standard_movement
@@ -55,7 +57,7 @@ unit_templates:
       speed: 6
 
   MAGE:
-    # Magic user with limited range versatility
+    # Magic user with cross AOE attack pattern
     health:
       hp_max: 15
     movement:
@@ -65,6 +67,7 @@ unit_templates:
       defense: 1
       attack_range_min: 1
       attack_range_max: 2  # Can attack adjacent or at range
+      aoe_pattern: "cross"  # Cross pattern AOE (1 Manhattan distance)
     status:
       speed: 4
 
@@ -79,6 +82,7 @@ unit_templates:
       defense: 2
       attack_range_min: 1
       attack_range_max: 2  # Can attack adjacent or at range
+      aoe_pattern: "single"
     status:
       speed: 3
 

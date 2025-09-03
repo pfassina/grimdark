@@ -9,37 +9,49 @@ This guide covers everything you need to know about creating maps and scenarios 
    - [Basic Map Structure](#basic-map-structure)
    - [Terrain Types and Tile IDs](#terrain-types-and-tile-ids)
    - [Multi-Layer Maps](#multi-layer-maps)
-   - [Map Objects](#map-objects)
 3. [Scenario Creation](#scenario-creation)
    - [Basic Scenario Structure](#basic-scenario-structure)
-   - [Unit Placement](#unit-placement)
+   - [Unit Definitions](#unit-definitions)
+   - [Placement System](#placement-system)
+   - [Markers and Regions](#markers-and-regions)
+   - [Objects and Triggers](#objects-and-triggers)
    - [Objectives](#objectives)
    - [Game Settings](#game-settings)
+   - [Map Overrides](#map-overrides)
 4. [Complete Examples](#complete-examples)
 5. [Advanced Features](#advanced-features)
 6. [Best Practices](#best-practices)
 
 ## Overview
 
-Grimdark SRPG uses a data-driven approach with three main components:
+Grimdark SRPG uses a **scenario-first data-driven approach** with clear separation of concerns:
 
-1. **Maps**: CSV files defining terrain layouts with optional layers
-2. **Objects**: YAML files defining spawn points, regions, and triggers
-3. **Scenarios**: YAML files defining units, objectives, and game rules
+1. **Maps**: CSV files defining ONLY terrain geometry (no gameplay elements)
+2. **Scenarios**: YAML files containing ALL gameplay content (units, objects, placements, objectives)
+3. **Data Templates**: Reusable unit classes and object definitions
 
 ### Directory Structure
 
 ```
 assets/
-├── maps/                          # Map directories
+├── maps/                          # Map directories (geometry only)
 │   └── your_map_name/
-│       ├── ground.csv            # Required: Base terrain
-│       ├── walls.csv             # Optional: Blocking structures
-│       ├── features.csv          # Optional: Decorative elements
-│       └── objects.yaml          # Optional: Spawn points, regions, triggers
-└── scenarios/                     # Scenario files
-    └── your_scenario.yaml
+│       ├── ground.csv            # Required: Base terrain tiles
+│       ├── walls.csv             # Optional: Structural layers
+│       └── features.csv          # Optional: Decorative layers
+├── scenarios/                     # Complete gameplay definitions
+│   └── your_scenario.yaml        # Units, placements, objectives, etc.
+└── data/                          # Reusable templates
+    └── units/
+        └── unit_templates.yaml    # Unit class definitions
 ```
+
+### Key Principles
+
+- **Maps contain only terrain** - No units, objects, or spawns in map files
+- **Scenarios are complete** - One file contains all gameplay for a battle
+- **Single source of truth** - Placements exist only in scenario files
+- **High reusability** - Same map supports many different scenarios
 
 ## Map Creation
 
@@ -113,122 +125,13 @@ Maps support multiple layers that composite together:
 
 This creates a fort with walls on three sides, leaving the south open.
 
-### Map Objects
-
-The `objects.yaml` file defines interactive elements on the map.
-
-#### Complete objects.yaml Example
-
-```yaml
-# Map Objects Configuration
-# Defines spawn points, regions, and triggers
-
-spawns:
-  # Player spawn points
-  - name: "Knight Start"
-    team: PLAYER
-    pos: [1, 1]
-    class: KNIGHT        # Optional: Force specific class
-    facing: "east"       # Optional: Initial facing direction
-    
-  - name: "Archer Start"
-    team: PLAYER
-    pos: [2, 1]
-    
-  # Enemy spawn points
-  - name: "Boss Spawn"
-    team: ENEMY
-    pos: [6, 6]
-    class: WARRIOR
-    
-  # Neutral spawn points  
-  - name: "Villager"
-    team: NEUTRAL
-    pos: [4, 4]
-
-regions:
-  # Defensive positions
-  - name: "Castle Keep"
-    rect: [3, 3, 2, 2]    # x, y, width, height
-    defense_bonus: 3
-    avoid_bonus: 20
-    description: "The heart of the castle provides excellent defense"
-    
-  # Hazardous areas
-  - name: "Poison Swamp"
-    rect: [5, 1, 3, 2]
-    damage_per_turn: 2
-    description: "Toxic waters damage units each turn"
-    
-  # Healing areas
-  - name: "Healing Spring"
-    rect: [1, 5, 2, 2]
-    heal_per_turn: 3
-    description: "Sacred waters restore health"
-    
-  # Mixed effects
-  - name: "Ancient Shrine"
-    rect: [4, 0, 1, 1]
-    defense_bonus: 2
-    heal_per_turn: 1
-    avoid_bonus: 10
-    description: "A mystical shrine grants multiple boons"
-
-triggers:
-  # Area triggers
-  - name: "Ambush Trigger"
-    type: "enter_region"
-    region: "Castle Keep"
-    condition: "unit_team:ENEMY"
-    action: "spawn_reinforcements"
-    data:
-      spawn_points: ["Knight Start", "Archer Start"]
-      units: ["KNIGHT", "ARCHER"]
-      message: "Defenders emerge from the castle!"
-      
-  # Position triggers
-  - name: "Treasure Chest"
-    type: "interact"
-    pos: [7, 7]
-    condition: "unit_team:PLAYER"
-    action: "give_item"
-    data:
-      item: "Healing Potion"
-      message: "Found a Healing Potion!"
-      
-  # Turn-based triggers
-  - name: "Reinforcement Wave 1"
-    type: "turn_start"
-    condition: "turn:5"
-    action: "spawn_unit"
-    data:
-      spawn_point: "Boss Spawn"
-      unit_class: "WARRIOR"
-      team: "ENEMY"
-      
-  # Unit triggers
-  - name: "Boss Defeated"
-    type: "unit_defeated"
-    condition: "unit_name:Dark Lord"
-    action: "display_message"
-    data:
-      message: "The Dark Lord falls! The castle is saved!"
-      
-  # Escape triggers
-  - name: "Escape Point"
-    type: "enter_region"
-    region: "Exit Zone"
-    condition: "unit_name:Princess"
-    action: "escape_unit"
-    data:
-      victory_on_escape: true
-```
+**Important**: Maps contain only terrain geometry. All gameplay elements (units, objects, spawns, regions, triggers) are now defined in scenario files for maximum reusability.
 
 ## Scenario Creation
 
 ### Basic Scenario Structure
 
-Scenarios are YAML files that define the battle setup, units, and objectives.
+Scenarios are YAML files containing ALL gameplay content: units, objects, placements, and objectives. This is the new **scenario-first approach**.
 
 #### Minimal Scenario Example
 
@@ -237,21 +140,26 @@ name: Basic Battle
 description: A simple skirmish
 author: Your Name
 
-# Map reference
+# Map reference (geometry only)
 map:
   source: assets/maps/your_map_name
 
-# Unit definitions
+# Unit roster (no positions here)
 units:
   - name: Hero
     class: KNIGHT
     team: PLAYER
-    position: [1, 1]
     
   - name: Enemy
     class: WARRIOR
     team: ENEMY
-    position: [5, 5]
+
+# All placements in one section
+placements:
+  Hero:
+    at: [1, 1]
+  Enemy:
+    at: [5, 5]
 
 # Objectives
 objectives:
@@ -264,47 +172,40 @@ objectives:
       description: Don't lose all your units
 ```
 
-### Unit Placement
+#### Key Structure Sections
 
-Units can be placed in several ways:
+- **Header**: `name`, `description`, `author`, optional metadata
+- **Map**: Reference to geometry-only map directory
+- **Units**: Unit roster with classes, teams, stat overrides (NO positions)
+- **Objects**: Interactive elements like healing fountains, doors, chests  
+- **Markers**: Named coordinate anchors for readability
+- **Regions**: Named rectangular areas for placement policies and triggers
+- **Placements**: Binds ALL units and objects to coordinates using `at:`, `at_marker:`, or `at_region:`
+- **Triggers**: Event-driven actions and responses
+- **Objectives**: Victory and defeat conditions
+- **Settings**: Game configuration (turn limits, fog of war, etc.)
+- **Map Overrides**: Optional terrain modifications (bridges, gates, etc.)
 
-#### 1. Direct Position (Traditional Method)
+### Unit Definitions
+
+Units are defined with class, team, and optional stat overrides. **No positions in unit definitions!** All placement is handled in the `placements:` section.
+
+#### Basic Unit Definition
 
 ```yaml
 units:
   - name: Sir Galahad
     class: KNIGHT
     team: PLAYER
-    position: [2, 3]    # Direct x, y coordinates
 ```
 
-#### 2. Using Spawn Points (Recommended)
-
-If your map has `objects.yaml` with spawn points, units will automatically use matching spawn points:
-
-```yaml
-units:
-  # Will use spawn point named "Sir Galahad" if it exists
-  - name: Sir Galahad
-    class: KNIGHT
-    team: PLAYER
-    position: [0, 0]    # Fallback if spawn point not found
-    
-  # Will use any available PLAYER team spawn point
-  - name: Archer Robin
-    class: ARCHER
-    team: PLAYER
-    position: [0, 0]
-```
-
-#### 3. With Stat Overrides
+#### With Stat Overrides
 
 ```yaml
 units:
   - name: Elite Guard
     class: KNIGHT
     team: PLAYER
-    position: [3, 3]
     stats_override:
       hp_max: 40        # Normal knight has 25
       strength: 10      # Normal knight has 7
@@ -313,14 +214,13 @@ units:
       movement_points: 4  # Normal knight has 3
 ```
 
-#### 4. Complete Unit Definition
+#### Complete Unit with All Stats
 
 ```yaml
 units:
   - name: Lord Commander
     class: KNIGHT
     team: PLAYER
-    position: [5, 5]
     stats_override:
       # Health
       hp_max: 50
@@ -336,12 +236,173 @@ units:
       # Movement
       movement_points: 5
       
-      # Range (for ranged units)
+      # Range (for ranged units)  
       range_min: 1
       range_max: 1
       
       # Status
       speed: 6
+```
+
+### Placement System
+
+The new placement system separates unit definitions from their positions, enabling maximum reusability and preventing coordinate duplication.
+
+#### 1. Direct Coordinates
+
+```yaml
+placements:
+  "Sir Galahad":
+    at: [2, 3]
+  "Elite Guard":
+    at: [4, 5]
+```
+
+#### 2. Using Markers (Recommended for Readability)
+
+```yaml
+# Define named positions first
+markers:
+  KNIGHT_POSITION:
+    at: [7, 2]
+    description: Central command position
+  ARCHER_TOWER:
+    at: [5, 3]
+    description: Elevated archer position
+
+# Then reference them in placements
+placements:
+  "Sir Galahad":
+    at_marker: KNIGHT_POSITION
+  "Archer Robin":
+    at_marker: ARCHER_TOWER
+```
+
+#### 3. Using Regions (For Dynamic Placement)
+
+```yaml
+# Define areas first
+regions:
+  FRONT_LINE:
+    rect: [1, 8, 13, 2]
+    description: Battle front positions
+  FORTRESS_WALLS:
+    rect: [4, 1, 7, 6] 
+    description: Defensive positions
+
+# Place units in regions with policies
+placements:
+  "Infantry Captain":
+    at_region: FRONT_LINE
+    policy: random_free_tile
+  "Wall Defender":
+    at_region: FORTRESS_WALLS
+    policy: spread_evenly
+```
+
+#### Placement Precedence
+
+Each unit/object must use exactly ONE placement method:
+1. `at: [x, y]` - Direct coordinates
+2. `at_marker: NAME` - Named marker position  
+3. `at_region: NAME` - Region-based with placement policy
+
+**Never mix placement types for the same unit!**
+
+### Markers and Regions
+
+#### Markers (Named Coordinates)
+
+Markers provide readable names for important positions:
+
+```yaml
+markers:
+  THRONE_ROOM:
+    at: [7, 3]
+    description: The king's throne room
+  MAIN_GATE:
+    at: [7, 10]
+    description: Primary fortress entrance  
+  TREASURE_VAULT:
+    at: [12, 2]
+    description: Hidden treasure location
+```
+
+#### Regions (Named Areas)
+
+Regions define rectangular areas for placement policies, triggers, and effects:
+
+```yaml
+regions:
+  BATTLEFIELD:
+    rect: [0, 8, 15, 3]    # x, y, width, height
+    description: Open combat area
+    
+  CASTLE_KEEP:
+    rect: [5, 2, 5, 4]
+    description: Heavily fortified interior
+    
+  SPAWN_ZONE:
+    rect: [1, 10, 13, 1]
+    description: Enemy reinforcement area
+```
+
+### Objects and Triggers
+
+#### Interactive Objects
+
+Objects provide environmental interactions and effects:
+
+```yaml
+objects:
+  HEALING_FOUNTAIN:
+    type: healing_fountain
+    properties:
+      heal_amount: 3
+      team_filter: PLAYER
+      description: Restores 3 HP to friendly units
+      
+  TREASURE_CHEST:
+    type: interactable
+    properties:
+      one_time_use: true
+      gives_item: "Magic Sword"
+      
+  MAGIC_DOOR:
+    type: door
+    properties:
+      requires_key: "Silver Key"
+      blocks_movement: true
+```
+
+#### Event Triggers
+
+Triggers create dynamic gameplay events:
+
+```yaml
+triggers:
+  REINFORCEMENTS:
+    type: turn_start
+    condition: turn:5
+    action: spawn_units
+    data:
+      units: ["Enemy Reinforcement"]
+      message: "Enemy reinforcements arrive!"
+      
+  BOSS_DEFEATED:
+    type: unit_defeated
+    condition: unit_name:"Dark Lord"
+    action: display_message
+    data:
+      message: "Victory! The Dark Lord has fallen!"
+      
+  REGION_ENTERED:
+    type: enter_region
+    condition: unit_team:PLAYER
+    region: TREASURE_VAULT
+    action: give_item
+    data:
+      item: "Ancient Artifact"
 ```
 
 ### Objectives
@@ -412,6 +473,42 @@ settings:
   time_of_day: night         # Lighting conditions
   reinforcements_enabled: true
 ```
+
+### Map Overrides
+
+Map overrides allow scenarios to modify the base terrain without changing the original map files:
+
+```yaml
+map_overrides:
+  # Individual tile changes
+  tile_patches:
+    - x: 3
+      y: 8
+      tile_id: 7        # Add bridge over water
+    - x: 6
+      y: 0
+      tile_id: 1        # Open the gate (remove wall)
+      
+  # Regional changes  
+  region_patches:
+    - rect: [5, 9, 3, 1]  # x, y, width, height
+      tile_id: 4          # Fill area with water
+    - rect: [10, 2, 2, 4]
+      tile_id: 8          # Add wall section
+      
+  # Conditional changes (future feature)
+  conditional_patches:
+    - condition: turn:10
+      x: 4
+      y: 5  
+      tile_id: 1        # Bridge appears on turn 10
+```
+
+**Benefits**: 
+- Create environmental variations without duplicating map files
+- Same map supports different scenarios (siege vs escape, summer vs winter)
+- Non-destructive - original maps remain unchanged
+- Dynamic terrain changes during gameplay (planned feature)
 
 ## Complete Examples
 

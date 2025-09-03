@@ -1,4 +1,5 @@
 # Grimdark SRPG Quick Reference
+*Updated for Scenario-First Asset System*
 
 ## Terrain Tile IDs
 
@@ -24,33 +25,39 @@ CLERIC   - Support: Can heal allies
 THIEF    - Scout: High Move (5), High Avoid
 ```
 
-## Map File Structure
+## Map File Structure (Geometry Only)
 
 ```
 your_map/
 ├── ground.csv     # Required: Base terrain (use tile IDs)
 ├── walls.csv      # Optional: Overlay structures (0 = empty)
-├── features.csv   # Optional: Decorations (0 = empty)
-└── objects.yaml   # Optional: Spawns, regions, triggers
+└── features.csv   # Optional: Decorations (0 = empty)
+# NO objects.yaml - all gameplay is in scenarios!
 ```
 
-## Minimal Scenario
+## Minimal Scenario (New Placement System)
 
 ```yaml
 name: Quick Battle
 map:
   source: assets/maps/your_map
 
+# Unit roster (no positions!)
 units:
   - name: Hero
     class: KNIGHT
     team: PLAYER
-    position: [1, 1]
     
   - name: Enemy
     class: WARRIOR
     team: ENEMY
-    position: [5, 5]
+
+# All placements separate
+placements:
+  Hero:
+    at: [1, 1]
+  Enemy:
+    at: [5, 5]
 
 objectives:
   victory:
@@ -59,28 +66,60 @@ objectives:
     - type: all_units_defeated
 ```
 
-## Objects.yaml Quick Template
+## Placement System Quick Templates
 
+### Direct Coordinates
 ```yaml
-spawns:
-  - name: "Spawn1"
-    team: PLAYER
-    pos: [1, 1]
-    class: KNIGHT    # Optional
+placements:
+  "Unit Name":
+    at: [x, y]
+```
 
+### Using Markers
+```yaml
+markers:
+  BOSS_POSITION:
+    at: [7, 7]
+    description: Final boss location
+
+placements:
+  "Dark Lord":
+    at_marker: BOSS_POSITION
+```
+
+### Using Regions
+```yaml
 regions:
-  - name: "Safe Zone"
-    rect: [0, 0, 3, 3]    # x, y, width, height
-    defense_bonus: 2
-    heal_per_turn: 1      # Optional
+  SPAWN_AREA:
+    rect: [1, 10, 13, 1]    # x, y, width, height
+    description: Enemy spawn zone
+
+placements:
+  "Reinforcement":
+    at_region: SPAWN_AREA
+    policy: random_free_tile
+```
+
+### Objects and Triggers (In Scenarios)
+```yaml
+objects:
+  HEALING_FOUNTAIN:
+    type: healing_fountain
+    properties:
+      heal_amount: 3
+      team_filter: PLAYER
 
 triggers:
-  - name: "Turn 5 Event"
-    type: "turn_start"
-    condition: "turn:5"
-    action: "display_message"
+  TURN_5_EVENT:
+    type: turn_start
+    condition: turn:5
+    action: display_message
     data:
       message: "Reinforcements arrive!"
+
+placements:
+  HEALING_FOUNTAIN:
+    at: [5, 5]
 ```
 
 ## Victory Objective Types
@@ -140,17 +179,21 @@ units:
   - name: Tank 1
     class: KNIGHT
     team: PLAYER
-    position: [1, 1]
     stats_override:
       <<: *tank_stats
       
   - name: Tank 2
     class: KNIGHT
     team: PLAYER
-    position: [2, 1]
     stats_override:
       <<: *tank_stats
       strength: 10    # Override specific stat
+
+placements:
+  Tank 1:
+    at: [1, 1]
+  Tank 2:
+    at: [2, 1]
 ```
 
 ## Region Effect Options
@@ -186,30 +229,38 @@ nix develop --command python tests/test_architecture.py
 map:
   source: assets/maps/fortress
 
-# Standard structure
+# Standard structure (scenario-first)
 assets/
-├── maps/
+├── maps/                    # Geometry only
 │   └── fortress/
 │       ├── ground.csv
-│       └── objects.yaml
-└── scenarios/
-    └── siege.yaml
+│       └── walls.csv        # No objects.yaml!
+├── scenarios/               # Complete gameplay
+│   └── siege.yaml          # Units, objects, placements, etc.
+└── data/                   # Reusable templates
+    └── units/
+        └── unit_templates.yaml
 ```
 
 ## Tips
 
 1. **Start Simple**: Test with one unit per team first
-2. **Use Spawn Points**: Let objects.yaml handle positions
-3. **Layer Order**: Ground → Walls → Features
-4. **Tile 0**: Means "empty" in overlay layers
-5. **Unit Names**: Must be unique within a scenario
-6. **Test Often**: Run scenario after each major change
+2. **Separate Concerns**: Units define stats, placements define positions
+3. **Use Markers**: Named positions make scenarios more readable
+4. **Layer Order**: Ground → Walls → Features (in maps)
+5. **Tile 0**: Means "empty" in overlay layers
+6. **Unit Names**: Must be unique within a scenario
+7. **Single Source**: All gameplay lives in scenario files
+8. **Test Often**: Run scenario after each major change
 
 ## Debug Checklist
 
 - [ ] CSV dimensions match across layers?
 - [ ] All tile IDs valid (1-8)?
-- [ ] Unit positions within map bounds?
-- [ ] Spawn point names unique?
+- [ ] All units have placements defined?
+- [ ] Placement coordinates within map bounds?
+- [ ] Unit/object names unique within scenario?
+- [ ] Each placement uses exactly one method (at/at_marker/at_region)?
+- [ ] Marker/region names referenced in placements exist?
 - [ ] Victory conditions achievable?
 - [ ] File paths use forward slashes?

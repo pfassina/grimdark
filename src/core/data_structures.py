@@ -50,7 +50,14 @@ class DataConverter:
             hp_max=unit.health.hp_max,
             facing=unit.facing,
             is_active=unit.can_move or unit.can_act,
-            highlight_type=highlight_type
+            highlight_type=highlight_type,
+            # Enhanced stats for strategic TUI
+            level=1,  # Placeholder - would come from experience system
+            exp=0,    # Placeholder - would come from experience system  
+            attack=unit.combat.strength,
+            defense=unit.combat.defense,
+            speed=unit.status.speed,
+            status_effects=[]  # Placeholder - would come from status effect system
         )
     
     @staticmethod
@@ -90,7 +97,7 @@ class DataConverter:
                     # Get the appropriate component and modify the value
                     if stat_name in ["hp_max"]:
                         unit.health.hp_max = value
-                    elif stat_name in ["strength", "defense", "attack_range_min", "attack_range_max"]:
+                    elif stat_name in ["strength", "defense", "attack_range_min", "attack_range_max", "aoe_pattern"]:
                         setattr(unit.combat, stat_name, value)
                     elif stat_name in ["movement"]:
                         unit.movement.movement_points = value

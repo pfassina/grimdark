@@ -124,7 +124,7 @@ class InputEvent:
         )
     
     def is_movement_key(self) -> bool:
-        return self.key in {Key.UP, Key.DOWN, Key.LEFT, Key.RIGHT, Key.W, Key.A, Key.S, Key.D}
+        return self.key in {Key.UP, Key.DOWN, Key.LEFT, Key.RIGHT, Key.S, Key.D}
     
     def is_confirm_key(self) -> bool:
         return self.key in {Key.ENTER, Key.SPACE, Key.Z}

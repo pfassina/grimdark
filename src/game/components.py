@@ -265,7 +265,8 @@ class CombatComponent(Component):
     """
     
     def __init__(self, entity: "Entity", strength: int, defense: int, 
-                 attack_range_min: int, attack_range_max: int):
+                 attack_range_min: int, attack_range_max: int, 
+                 aoe_pattern: str = "single"):
         """Initialize combat component.
         
         Args:
@@ -274,12 +275,14 @@ class CombatComponent(Component):
             defense: Defense value
             attack_range_min: Minimum attack range
             attack_range_max: Maximum attack range
+            aoe_pattern: Area of effect pattern ("single", "cross", etc.)
         """
         super().__init__(entity)
         self.strength = strength
         self.defense = defense
         self.attack_range_min = attack_range_min
         self.attack_range_max = attack_range_max
+        self.aoe_pattern = aoe_pattern
     
     def get_component_name(self) -> str:
         """Get the name identifier for this component type."""

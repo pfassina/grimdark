@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Optional, Any
+from typing import Optional, Any, Tuple
 from pathlib import Path
 
 from ..core.data_structures import DataConverter
@@ -16,11 +16,11 @@ from .scenario import (
     Scenario, UnitData, ScenarioSettings, Objective,
     DefeatAllEnemiesObjective, SurviveTurnsObjective, ReachPositionObjective,
     DefeatUnitObjective, ProtectUnitObjective, PositionCapturedObjective,
-    TurnLimitObjective, AllUnitsDefeatedObjective
+    TurnLimitObjective, AllUnitsDefeatedObjective,
+    ScenarioMarker, ScenarioRegion, ScenarioObject, ScenarioTrigger, ActorPlacement
 )
 from .map import GameMap
 from .unit import Unit
-from .map_objects import load_map_objects, SpawnPoint
 
 
 class ScenarioLoader:
@@ -47,7 +47,23 @@ class ScenarioLoader:
         # Get the directory of the scenario file for relative paths
         scenario_dir = os.path.dirname(file_path)
         
-        return ScenarioLoader._parse_scenario(data, scenario_dir)
+        scenario = ScenarioLoader._parse_scenario(data, scenario_dir)
+        
+        # Validate the scenario
+        if scenario.map_file:
+            try:
+                # Create the map to validate against
+                temp_map = GameMap.from_csv_layers(scenario.map_file)
+                validation_errors = ScenarioLoader.validate_scenario(scenario, temp_map)
+                
+                if validation_errors:
+                    print(f"Scenario validation warnings for {path_obj.name}:")
+                    for error in validation_errors:
+                        print(f"  - {error}")
+            except Exception as e:
+                print(f"Warning: Could not validate scenario against map: {e}")
+        
+        return scenario
     
     @staticmethod
     def _parse_scenario(data: dict[str, Any], base_dir: str = "") -> Scenario:
@@ -75,18 +91,65 @@ class ScenarioLoader:
             else:
                 raise ValueError("Map must reference an external file with 'source' field")
         
-        # Parse units
+        # Parse markers
+        if "markers" in data:
+            for marker_name, marker_data in data["markers"].items():
+                marker = ScenarioMarker.from_dict(marker_name, marker_data)
+                scenario.markers[marker_name] = marker
+        
+        # Parse regions
+        if "regions" in data:
+            for region_name, region_data in data["regions"].items():
+                region = ScenarioRegion.from_dict(region_name, region_data)
+                scenario.regions[region_name] = region
+        
+        # Parse units (definitions only, no positions for now)
         if "units" in data:
             for unit_data in data["units"]:
-                unit = UnitData(
-                    name=unit_data["name"],
-                    unit_class=unit_data["class"],
-                    team=unit_data["team"],
-                    x=unit_data["position"][0],
-                    y=unit_data["position"][1],
-                    stats_override=unit_data.get("stats_override")
-                )
+                # Support both old format (with position) and new format (without position)
+                if "position" in unit_data:
+                    # Old format - keep for backward compatibility
+                    unit = UnitData(
+                        name=unit_data["name"],
+                        unit_class=unit_data["class"],
+                        team=unit_data["team"],
+                        x=unit_data["position"][0],
+                        y=unit_data["position"][1],
+                        stats_override=unit_data.get("stats_override")
+                    )
+                else:
+                    # New format - no position, will be resolved from placements
+                    unit = UnitData(
+                        name=unit_data["name"],
+                        unit_class=unit_data["class"],
+                        team=unit_data["team"],
+                        x=0,  # Temporary, will be overridden by placement
+                        y=0,  # Temporary, will be overridden by placement
+                        stats_override=unit_data.get("stats_override")
+                    )
                 scenario.units.append(unit)
+        
+        # Parse objects
+        if "objects" in data:
+            for obj_name, obj_data in data["objects"].items():
+                obj = ScenarioObject.from_dict(obj_name, obj_data)
+                scenario.objects.append(obj)
+        
+        # Parse triggers
+        if "triggers" in data:
+            for trigger_name, trigger_data in data["triggers"].items():
+                trigger = ScenarioTrigger.from_dict(trigger_name, trigger_data)
+                scenario.triggers.append(trigger)
+        
+        # Parse placements
+        if "placements" in data:
+            for actor_name, placement_data in data["placements"].items():
+                placement = ActorPlacement.from_dict(actor_name, placement_data)
+                scenario.placements.append(placement)
+        
+        # Parse map overrides
+        if "map_overrides" in data:
+            scenario.map_overrides = data["map_overrides"]
         
         # Parse objectives
         if "objectives" in data:
@@ -116,6 +179,108 @@ class ScenarioLoader:
             )
         
         return scenario
+    
+    @staticmethod
+    def resolve_placements(scenario: Scenario, game_map: GameMap) -> None:
+        """Resolve placement intents into actual coordinates for all actors.
+        
+        This method processes the placement information and assigns actual
+        coordinates to units and objects based on markers, regions, and placement policies.
+        """
+        import random
+        
+        # Create lookup tables for actors
+        units_by_name = {unit.name: unit for unit in scenario.units}
+        objects_by_name = {obj.name: obj for obj in scenario.objects}
+        
+        # Process each placement
+        for placement in scenario.placements:
+            actor_name = placement.actor_name
+            
+            # Find the actor (unit or object)
+            if actor_name in units_by_name:
+                actor = units_by_name[actor_name]
+                is_unit = True
+            elif actor_name in objects_by_name:
+                actor = objects_by_name[actor_name]  
+                is_unit = False
+            else:
+                print(f"Warning: Actor '{actor_name}' not found in units or objects")
+                continue
+            
+            # Resolve placement to coordinates
+            coordinates = ScenarioLoader._resolve_placement_to_coordinates(
+                placement, scenario, game_map)
+            
+            if coordinates is None:
+                print(f"Warning: Could not resolve placement for '{actor_name}'")
+                continue
+            
+            x, y = coordinates
+            
+            # Apply coordinates to the actor
+            if is_unit:
+                actor.x = x
+                actor.y = y
+            else:
+                # For objects, we might need to store coordinates differently
+                # For now, we'll add them to the object's properties
+                actor.properties['x'] = x
+                actor.properties['y'] = y
+    
+    @staticmethod
+    def _resolve_placement_to_coordinates(placement: ActorPlacement, scenario: Scenario, 
+                                        game_map: GameMap) -> Optional[Tuple[int, int]]:
+        """Resolve a single placement intent to coordinates."""
+        import random
+        
+        if placement.placement_at:
+            # Direct coordinate placement
+            return placement.placement_at
+        
+        elif placement.placement_marker:
+            # Marker-based placement
+            marker = scenario.markers.get(placement.placement_marker)
+            if not marker:
+                print(f"Warning: Marker '{placement.placement_marker}' not found")
+                return None
+            return marker.position
+        
+        elif placement.placement_region:
+            # Region-based placement with policy
+            region = scenario.regions.get(placement.placement_region)
+            if not region:
+                print(f"Warning: Region '{placement.placement_region}' not found")
+                return None
+            
+            free_positions = region.get_free_positions(game_map)
+            if not free_positions:
+                print(f"Warning: No free positions in region '{placement.placement_region}'")
+                return None
+            
+            # Apply placement policy
+            if placement.placement_policy == placement.placement_policy.RANDOM_FREE_TILE:
+                return random.choice(free_positions)
+            
+            elif placement.placement_policy == placement.placement_policy.SPREAD_EVENLY:
+                # For now, just use random. A more sophisticated implementation would
+                # track previously placed units and spread them out evenly
+                return random.choice(free_positions)
+            
+            elif placement.placement_policy == placement.placement_policy.LINE_LEFT_TO_RIGHT:
+                # Sort by x coordinate, then by y
+                free_positions.sort(key=lambda pos: (pos[0], pos[1]))
+                return free_positions[0] if free_positions else None
+            
+            elif placement.placement_policy == placement.placement_policy.LINE_TOP_TO_BOTTOM:
+                # Sort by y coordinate, then by x
+                free_positions.sort(key=lambda pos: (pos[1], pos[0]))
+                return free_positions[0] if free_positions else None
+            
+            else:
+                return random.choice(free_positions)
+        
+        return None
     
     @staticmethod
     def _parse_objective(obj_data: dict[str, Any], is_victory: bool) -> Optional[Objective]:
@@ -178,11 +343,154 @@ class ScenarioLoader:
         return None
     
     @staticmethod
+    def apply_map_overrides(game_map: GameMap, overrides: dict[str, Any]) -> None:
+        """Apply map overrides to modify the map non-destructively.
+        
+        Supported override types:
+        - tile_patches: List of coordinate-based tile changes
+        - region_patches: Region-based tile changes
+        """
+        from ..core.tileset_loader import get_tileset_config
+        from .tile import TerrainType
+        
+        tileset_config = get_tileset_config()
+        
+        # Apply tile patches
+        if "tile_patches" in overrides:
+            for patch in overrides["tile_patches"]:
+                x = patch["x"]
+                y = patch["y"]
+                tile_id = patch["tile_id"]
+                
+                # Validate coordinates
+                if not game_map.is_valid_position(x, y):
+                    print(f"Warning: Invalid position for tile patch: ({x}, {y})")
+                    continue
+                
+                # Get terrain type from tile ID
+                tile_config = tileset_config.get_tile_config(tile_id)
+                if tile_config:
+                    terrain_type_str = tile_config.get('terrain_type', 'plain')
+                    terrain_type = TerrainType[terrain_type_str.upper()]
+                    game_map.set_tile(x, y, terrain_type)
+                else:
+                    print(f"Warning: Unknown tile ID in patch: {tile_id}")
+        
+        # Apply region patches 
+        if "region_patches" in overrides:
+            for patch in overrides["region_patches"]:
+                rect = patch["rect"]  # [x, y, width, height]
+                tile_id = patch["tile_id"]
+                
+                x, y, width, height = rect
+                
+                # Get terrain type from tile ID
+                tile_config = tileset_config.get_tile_config(tile_id)
+                if not tile_config:
+                    print(f"Warning: Unknown tile ID in region patch: {tile_id}")
+                    continue
+                
+                terrain_type_str = tile_config.get('terrain_type', 'plain')
+                terrain_type = TerrainType[terrain_type_str.upper()]
+                
+                # Apply to all tiles in the region
+                for patch_x in range(x, x + width):
+                    for patch_y in range(y, y + height):
+                        if game_map.is_valid_position(patch_x, patch_y):
+                            game_map.set_tile(patch_x, patch_y, terrain_type)
+    
+    @staticmethod
+    def validate_scenario(scenario: Scenario, game_map: GameMap = None) -> list[str]:
+        """Validate a scenario for common errors.
+        
+        Returns a list of validation error messages. Empty list means valid.
+        """
+        errors = []
+        
+        # Create lookup tables for actors
+        unit_names = {unit.name for unit in scenario.units}
+        object_names = {obj.name for obj in scenario.objects}
+        all_actor_names = unit_names | object_names
+        
+        # Validate placements
+        placement_actor_names = set()
+        for placement in scenario.placements:
+            actor_name = placement.actor_name
+            
+            # Check if actor exists
+            if actor_name not in all_actor_names:
+                errors.append(f"Placement for unknown actor: '{actor_name}'")
+                continue
+            
+            # Check for duplicate placements
+            if actor_name in placement_actor_names:
+                errors.append(f"Duplicate placement for actor: '{actor_name}'")
+            placement_actor_names.add(actor_name)
+            
+            # Validate marker references
+            if placement.placement_marker:
+                if placement.placement_marker not in scenario.markers:
+                    errors.append(f"Placement '{actor_name}' references unknown marker: '{placement.placement_marker}'")
+            
+            # Validate region references
+            if placement.placement_region:
+                if placement.placement_region not in scenario.regions:
+                    errors.append(f"Placement '{actor_name}' references unknown region: '{placement.placement_region}'")
+            
+            # Validate coordinates are in bounds (if map provided)
+            if game_map and placement.placement_at:
+                x, y = placement.placement_at
+                if not game_map.is_valid_position(x, y):
+                    errors.append(f"Placement '{actor_name}' has out-of-bounds coordinates: ({x}, {y})")
+                else:
+                    # Check if tile is passable for units
+                    if actor_name in unit_names:
+                        tile = game_map.get_tile(x, y)
+                        if tile and tile.blocks_movement:
+                            errors.append(f"Unit placement '{actor_name}' on impassable tile at ({x}, {y})")
+        
+        # Check for actors without placements (in new format)
+        actors_without_placements = all_actor_names - placement_actor_names
+        # Only warn about units without placements if there are placements defined
+        # (allows backward compatibility with old format)
+        if scenario.placements and actors_without_placements:
+            for actor_name in actors_without_placements:
+                if actor_name in unit_names:
+                    # For units, check if they have old-style position
+                    unit = next(u for u in scenario.units if u.name == actor_name)
+                    if unit.x == 0 and unit.y == 0:  # Default values indicate no position set
+                        errors.append(f"Unit '{actor_name}' has no placement defined")
+        
+        # Validate marker coordinates are in bounds (if map provided)
+        if game_map:
+            for marker_name, marker in scenario.markers.items():
+                x, y = marker.position
+                if not game_map.is_valid_position(x, y):
+                    errors.append(f"Marker '{marker_name}' has out-of-bounds coordinates: ({x}, {y})")
+        
+        # Validate region bounds (if map provided)
+        if game_map:
+            for region_name, region in scenario.regions.items():
+                x, y, width, height = region.rect
+                if not game_map.is_valid_position(x, y):
+                    errors.append(f"Region '{region_name}' has out-of-bounds starting coordinates: ({x}, {y})")
+                if not game_map.is_valid_position(x + width - 1, y + height - 1):
+                    errors.append(f"Region '{region_name}' extends beyond map bounds")
+        
+        return errors
+    
+    @staticmethod
     def create_game_map(scenario: Scenario) -> GameMap:
         """Create a GameMap from scenario data."""
         if scenario.map_file:
             # Load from CSV directory format
-            return GameMap.from_csv_layers(scenario.map_file)
+            game_map = GameMap.from_csv_layers(scenario.map_file)
+            
+            # Apply map overrides if present
+            if scenario.map_overrides:
+                ScenarioLoader.apply_map_overrides(game_map, scenario.map_overrides)
+            
+            return game_map
         else:
             raise ValueError("Scenario must have a map_file reference")
     
@@ -190,53 +498,17 @@ class ScenarioLoader:
     def place_units(scenario: Scenario, game_map: GameMap) -> None:
         """Place units from scenario data onto the map.
         
-        This method will try to use spawn points from objects.yaml if available,
-        falling back to positions defined in the scenario file.
+        Uses the new placement system to resolve unit positions from
+        placement intents (markers, regions, direct coordinates).
         """
-        # Load map objects if available
-        map_objects = None
-        if scenario.map_file:
-            map_objects = load_map_objects(scenario.map_file)
+        # First, resolve all placements to actual coordinates
+        ScenarioLoader.resolve_placements(scenario, game_map)
         
-        # Track which spawn points have been used
-        used_spawn_points = set()
-        
+        # Now place all units on the map
         for unit_data in scenario.units:
             try:
                 # Use centralized converter to create unit from scenario data
                 unit = DataConverter.scenario_data_to_unit(unit_data)
-                
-                # Try to find a spawn point for this unit
-                spawn_point = None
-                if map_objects:
-                    # First, try to find spawn point by exact name match
-                    spawn_point = map_objects.get_spawn_point(unit.name)
-                    
-                    # If not found by name, find an unused spawn point for the team
-                    if not spawn_point:
-                        team_spawns = map_objects.get_spawn_points_for_team(Team[unit_data.team])
-                        for sp in team_spawns:
-                            if sp.name not in used_spawn_points:
-                                # Optionally check if class matches
-                                if sp.unit_class and sp.unit_class != unit_data.unit_class:
-                                    continue
-                                spawn_point = sp
-                                break
-                
-                # Use spawn point position if found
-                if spawn_point:
-                    # Move unit to spawn point position before adding to map
-                    x, y = spawn_point.position
-                    unit_data.x = x
-                    unit_data.y = y
-                    used_spawn_points.add(spawn_point.name)
-                    
-                    # Override class if specified in spawn point
-                    if spawn_point.unit_class:
-                        unit_data.unit_class = spawn_point.unit_class
-                    
-                    # Recreate unit with updated position
-                    unit = DataConverter.scenario_data_to_unit(unit_data)
                 
                 # Add unit to map
                 if not game_map.add_unit(unit):

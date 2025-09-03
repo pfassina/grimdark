@@ -76,6 +76,8 @@ class SimpleRenderer(Renderer):
             render_items[LayerType.TERRAIN].extend(context.tiles)
         if context.overlays:
             render_items[LayerType.OVERLAY].extend(context.overlays)
+        if context.attack_targets:
+            render_items[LayerType.OVERLAY].extend(context.attack_targets)
         if context.units:
             render_items[LayerType.UNITS].extend(context.units)
         if context.cursor:
@@ -111,6 +113,15 @@ class SimpleRenderer(Renderer):
             elif isinstance(item, OverlayTileRenderData):
                 symbol = self.ui_symbols.get(f"{item.overlay_type}_overlay", "?")
                 grid[screen_y][screen_x] = symbol
+            
+            elif hasattr(item, 'target_type'):  # AttackTargetRenderData
+                # Simple ASCII representation of targeting
+                if item.target_type == "selected":
+                    grid[screen_y][screen_x] = "X" if item.blink_phase else "+"
+                elif item.target_type == "aoe":
+                    grid[screen_y][screen_x] = "*" if item.blink_phase else "+"
+                else:  # "range"
+                    grid[screen_y][screen_x] = "."
                     
             elif isinstance(item, UnitRenderData):
                 symbol = self.unit_symbols.get(item.unit_type.lower(), "?")

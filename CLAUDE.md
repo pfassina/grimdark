@@ -123,9 +123,9 @@ The system uses a **push-based rendering architecture** where game logic and ren
 - **Renderer-owned visuals** - Each renderer owns its display logic (colors, symbols, sprites)
 - **Centralized gameplay data** - Terrain properties and gameplay rules in `assets/tileset.yaml`
 
-## Asset System
+## Asset System - Scenario-First Design
 
-The game uses a layered, data-driven asset system:
+The game uses a **scenario-first asset system** where scenarios are the single source of truth for all gameplay content (units, objects, placements), while maps contain only geometry:
 
 ### Tileset Configuration (`assets/tileset.yaml`)
 - Defines gameplay properties for all terrain types (move cost, defense, etc.)
@@ -133,17 +133,34 @@ The game uses a layered, data-driven asset system:
 - **Does not** define visual properties (colors/symbols) - those are renderer-specific
 - Single source of truth for terrain gameplay mechanics
 
-### Map System
+### Map System (Geometry Only)
 - **CSV-based layers**: `ground.csv` (required), `walls.csv`, `features.csv` (optional)  
-- **Map objects**: `objects.yaml` defines spawn points, regions, triggers
+- **Pure geometry**: Maps contain ONLY terrain tile IDs - no units, objects, or spawns
 - **Layer composition**: Higher layers override lower layers
 - **Directory structure**: Each map is a directory in `assets/maps/`
+- **Reusable**: Same map can be used across multiple scenarios with different gameplay
 
-### Scenario System  
+### Scenario System (Complete Gameplay Definition)
 - **YAML format**: Human-readable scenario definitions in `assets/scenarios/`
-- **Map references**: Link to map directories, not embedded map data
-- **Objective patterns**: Reusable YAML anchors for common objectives
-- **Unit placement**: Via spawn points or direct coordinate specification
+- **Map references**: Link to map directories for geometry
+- **Complete gameplay**: All units, objects, placements, objectives in one file
+- **Placement system**: Uses `at: [x,y]`, `at_marker: NAME`, or `at_region: NAME`
+- **Markers**: Named coordinate anchors for readability (`KNIGHT_POSITION: { at: [7,2] }`)
+- **Regions**: Named rectangular areas for placement policies and triggers
+- **Objects**: Scenario-specific interactive elements (healing fountains, doors, etc.)
+- **Map overrides**: Optional non-destructive tile patches for environmental variation
+
+### Data Templates (`assets/data/`)
+- **Unit templates**: Class definitions and base stats in `assets/data/units/`
+- **Reusable definitions**: Never contain placements - only stat templates
+- **Centralized balance**: Single place to adjust unit class properties
+
+### Key Benefits of Scenario-First Design
+- **Single-file authoring**: Create new scenarios by editing one file, no map changes needed
+- **No redundancy**: Coordinates and placements exist in exactly one place
+- **High reusability**: Same map supports many different scenarios and gameplay setups
+- **Zero merge conflicts**: Multiple designers can work on scenarios using the same map
+- **Deterministic builds**: Scenario loader resolves placement intents into concrete game state
 
 ## Adding Features
 
@@ -157,19 +174,26 @@ When adding a new renderer:
 2. Implement required methods: `initialize()`, `render_frame()`, `get_input_events()`, `cleanup()`
 3. Register it in main entry point
 
-When creating new scenarios:
+When creating new scenarios (single-file authoring):
 1. Create YAML files in `assets/scenarios/` directory
-2. Reference external CSV map directories in `assets/maps/`
-3. Define spawn points and map objects in `objects.yaml`
-4. Place units with optional stat overrides
-5. Set victory/defeat objectives using objective patterns
-6. Configure game settings (turn limits, etc.)
+2. Reference external CSV map directories with `map: { source: assets/maps/mapname }`
+3. Define `units:` section with unit roster (classes, teams, stat overrides)
+4. Define `objects:` section for interactive elements (healing fountains, doors, etc.)
+5. Define `markers:` for named coordinate anchors (optional, for readability)
+6. Define `regions:` for named rectangular areas (optional, for triggers/placement)
+7. Define `placements:` section binding units/objects to coordinates using:
+   - `at: [x,y]` for explicit coordinates
+   - `at_marker: NAME` for marker-based placement
+   - `at_region: NAME` for region-based placement (with policies)
+8. Set `objectives:` for victory/defeat conditions
+9. Configure `settings:` (turn limits, fog of war, etc.)
+10. Add `map_overrides:` if environmental changes needed (bridges, gates, etc.)
 
-When creating new maps:
+When creating new maps (geometry only):
 1. Create directories in `assets/maps/` with CSV layers
-2. Required: `ground.csv` with terrain data
-3. Optional: `walls.csv`, `features.csv` for additional layers
-4. Optional: `objects.yaml` for spawn points and interactive elements
+2. Required: `ground.csv` with terrain tile IDs
+3. Optional: `walls.csv`, `features.csv` for additional terrain layers
+4. **Do NOT add**: units, objects, spawns, or gameplay elements
 5. Terrain properties defined in `assets/tileset.yaml`
 
 ## Testing

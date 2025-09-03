@@ -1,6 +1,8 @@
 # Grimdark SRPG Scenario Examples Gallery
 
-This document provides ready-to-use scenario examples demonstrating different mission types, advanced features, and creative possibilities.
+This document provides ready-to-use scenario examples demonstrating different mission types, advanced features, and creative possibilities using the **new scenario-first placement system**.
+
+> **Note**: This documentation is being updated for the new placement system. The first example has been updated to demonstrate the new approach. Additional examples will be converted gradually.
 
 ## Table of Contents
 
@@ -25,21 +27,37 @@ author: Example Designer
 map:
   source: assets/maps/open_field
 
+# Unit roster (no positions)
 units:
-  # Balanced teams of 5 units each
   # Player Team
-  - { name: Knight, class: KNIGHT, team: PLAYER, position: [2, 5] }
-  - { name: Archer 1, class: ARCHER, team: PLAYER, position: [1, 4] }
-  - { name: Archer 2, class: ARCHER, team: PLAYER, position: [1, 6] }
-  - { name: Mage, class: MAGE, team: PLAYER, position: [2, 7] }
-  - { name: Cleric, class: CLERIC, team: PLAYER, position: [3, 5] }
+  - { name: Knight, class: KNIGHT, team: PLAYER }
+  - { name: Archer 1, class: ARCHER, team: PLAYER }
+  - { name: Archer 2, class: ARCHER, team: PLAYER }
+  - { name: Mage, class: MAGE, team: PLAYER }
+  - { name: Cleric, class: CLERIC, team: PLAYER }
   
   # Enemy Team - mirror match
-  - { name: Enemy Knight, class: KNIGHT, team: ENEMY, position: [12, 5] }
-  - { name: Enemy Archer 1, class: ARCHER, team: ENEMY, position: [13, 4] }
-  - { name: Enemy Archer 2, class: ARCHER, team: ENEMY, position: [13, 6] }
-  - { name: Enemy Mage, class: MAGE, team: ENEMY, position: [12, 7] }
-  - { name: Enemy Cleric, class: CLERIC, team: ENEMY, position: [11, 5] }
+  - { name: Enemy Knight, class: KNIGHT, team: ENEMY }
+  - { name: Enemy Archer 1, class: ARCHER, team: ENEMY }
+  - { name: Enemy Archer 2, class: ARCHER, team: ENEMY }
+  - { name: Enemy Mage, class: MAGE, team: ENEMY }
+  - { name: Enemy Cleric, class: CLERIC, team: ENEMY }
+
+# All placements defined here
+placements:
+  # Player formation
+  Knight: { at: [2, 5] }
+  "Archer 1": { at: [1, 4] }
+  "Archer 2": { at: [1, 6] }
+  Mage: { at: [2, 7] }
+  Cleric: { at: [3, 5] }
+  
+  # Enemy formation
+  "Enemy Knight": { at: [12, 5] }
+  "Enemy Archer 1": { at: [13, 4] }
+  "Enemy Archer 2": { at: [13, 6] }
+  "Enemy Mage": { at: [12, 7] }
+  "Enemy Cleric": { at: [11, 5] }
 
 objectives:
   victory:
@@ -51,6 +69,165 @@ settings:
   turn_limit: null  # No time pressure
   starting_team: PLAYER
 ```
+
+### 1.5. Complete Modern Scenario (New System Showcase)
+
+**Concept**: Demonstrates all new placement features: markers, regions, objects, and map overrides.
+
+```yaml
+name: Fortress Defense (Modern)
+description: Showcase of the new scenario-first placement system
+author: System Demo
+
+map:
+  source: assets/maps/fortress
+
+# Named coordinate anchors
+markers:
+  COMMANDER_POST:
+    at: [7, 2]
+    description: Central command position
+  HEALING_FOUNTAIN:
+    at: [7, 3]
+    description: Sacred fountain location
+  MAIN_GATE:
+    at: [7, 10]
+    description: Primary fortress entrance
+
+# Named regions for placement and triggers  
+regions:
+  FORTRESS_WALLS:
+    rect: [4, 1, 7, 6]
+    description: Defensive wall positions
+  BATTLEFIELD:
+    rect: [0, 8, 15, 3]
+    description: Open combat area
+  ENEMY_SPAWN:
+    rect: [1, 10, 13, 1]
+    description: Enemy reinforcement zone
+
+# Unit roster (no positions!)
+units:
+  # Player defenders
+  - name: Sir Commander
+    class: KNIGHT
+    team: PLAYER
+    stats_override:
+      hp_max: 40
+      strength: 10
+      defense: 7
+      
+  - name: Wall Archer Alpha
+    class: ARCHER
+    team: PLAYER
+    
+  - name: Wall Archer Beta
+    class: ARCHER
+    team: PLAYER
+    
+  - name: Battle Mage
+    class: MAGE
+    team: PLAYER
+    
+  # Initial enemies
+  - name: Assault Captain
+    class: KNIGHT
+    team: ENEMY
+    
+  - name: Infantry Squad
+    class: WARRIOR
+    team: ENEMY
+
+# Interactive objects
+objects:
+  SACRED_FOUNTAIN:
+    type: healing_fountain
+    properties:
+      heal_amount: 3
+      team_filter: PLAYER
+      description: Restores 3 HP to friendly units
+
+# Event-driven triggers
+triggers:
+  FOUNTAIN_HEALING:
+    type: turn_start
+    condition: unit_team:PLAYER
+    action: heal_units_in_region
+    data:
+      region: FORTRESS_WALLS
+      heal_amount: 2
+      
+  ENEMY_REINFORCEMENTS:
+    type: turn_start
+    condition: turn:5
+    action: spawn_units
+    data:
+      units: ["Reinforcement Wave"]
+      message: "Enemy reinforcements arrive!"
+
+# New placement system in action
+placements:
+  # Using markers for key positions
+  "Sir Commander":
+    at_marker: COMMANDER_POST
+    
+  # Using regions with placement policies
+  "Wall Archer Alpha":
+    at_region: FORTRESS_WALLS
+    policy: random_free_tile
+    
+  "Wall Archer Beta":
+    at_region: FORTRESS_WALLS  
+    policy: spread_evenly
+    
+  # Direct coordinates still supported
+  "Battle Mage":
+    at: [5, 3]
+    
+  # Enemy placements
+  "Assault Captain":
+    at_marker: MAIN_GATE
+    
+  "Infantry Squad":
+    at_region: BATTLEFIELD
+    policy: random_free_tile
+    
+  # Object placement
+  SACRED_FOUNTAIN:
+    at_marker: HEALING_FOUNTAIN
+
+# Environmental modifications
+map_overrides:
+  tile_patches:
+    - x: 6
+      y: 8
+      tile_id: 7  # Add bridge for tactical variety
+
+objectives:
+  victory:
+    - type: survive_turns
+      turns: 8
+      description: Hold the fortress for 8 turns
+    - type: defeat_all_enemies
+      description: Or eliminate all threats
+      
+  defeat:
+    - type: protect_unit
+      unit_name: Sir Commander
+      description: The commander must survive
+
+settings:
+  turn_limit: 12
+  starting_team: PLAYER
+```
+
+This example demonstrates:
+- **Markers**: Named positions for important locations
+- **Regions**: Areas for dynamic placement and effects  
+- **Objects**: Interactive environmental elements
+- **Placement variety**: All three methods (at/at_marker/at_region)
+- **Map overrides**: Non-destructive terrain modifications
+- **Advanced triggers**: Event-driven gameplay
 
 ### 2. Survival Mission
 

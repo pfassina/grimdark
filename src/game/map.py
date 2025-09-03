@@ -241,6 +241,43 @@ class GameMap:
         
         return attack_range
     
+    def calculate_aoe_tiles(self, center: tuple[int, int], pattern: str) -> list[tuple[int, int]]:
+        """Calculate AOE affected tiles from center position, clipped to map bounds.
+        
+        Args:
+            center: Center position (x, y) of the AOE
+            pattern: AOE pattern type ("single", "cross", etc.)
+            
+        Returns:
+            List of tiles affected by the AOE pattern
+        """
+        tiles = []
+        x, y = center
+        
+        if pattern == "cross":
+            # Cross pattern: center plus 1 Manhattan distance
+            candidates = [
+                (x, y),      # Center
+                (x+1, y),    # Right
+                (x-1, y),    # Left
+                (x, y+1),    # Down
+                (x, y-1),    # Up
+            ]
+            
+            # Clip to map boundaries
+            for cx, cy in candidates:
+                if 0 <= cx < self.width and 0 <= cy < self.height:
+                    tiles.append((cx, cy))
+                    
+        elif pattern == "single":
+            # Single target only
+            if 0 <= x < self.width and 0 <= y < self.height:
+                tiles.append((x, y))
+        
+        # Future patterns can be added here (square, line, etc.)
+        
+        return tiles
+    
     def calculate_threat_range(self, team: Team) -> set[tuple[int, int]]:
         threat_range = set()
         

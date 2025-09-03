@@ -6,11 +6,11 @@ of game functionality.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING
 import uuid
 
 if TYPE_CHECKING:
-    from typing import Self
+    pass
 
 
 class Component(ABC):
@@ -46,7 +46,7 @@ class Entity:
     def __init__(self):
         """Initialize entity with unique ID and empty component collection."""
         self.entity_id: str = str(uuid.uuid4())
-        self.components: Dict[str, Component] = {}
+        self.components: dict[str, Component] = {}
     
     def add_component(self, component: Component) -> None:
         """Add a component to this entity.
@@ -113,7 +113,7 @@ class Entity:
         """
         return self.components.pop(component_name, None)
     
-    def get_all_components(self) -> Dict[str, Component]:
+    def get_all_components(self) -> dict[str, Component]:
         """Get all components on this entity.
         
         Returns:

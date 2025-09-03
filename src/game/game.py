@@ -1,10 +1,12 @@
 import time
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from ..core.renderable import OverlayRenderData, BannerRenderData, DialogRenderData, BattleForecastRenderData
 
 from ..core.renderer import Renderer
 from ..core.renderable import (
-    RenderContext, TileRenderData, UnitRenderData,
-    CursorRenderData, OverlayTileRenderData, TextRenderData
+    RenderContext, TileRenderData, CursorRenderData, OverlayTileRenderData, TextRenderData
 )
 from ..core.input import InputEvent, InputType, Key
 from ..core.game_state import GameState, BattlePhase, GamePhase
@@ -12,7 +14,6 @@ from ..core.data_structures import DataConverter
 from ..core.game_enums import Team
 
 from .map import GameMap
-from .unit import Unit
 from .scenario import Scenario
 from .scenario_loader import ScenarioLoader
 from .scenario_menu import ScenarioMenu
@@ -56,9 +57,8 @@ class Game:
     
     def _load_default_scenario(self) -> None:
         """Load the default test scenario if no map/scenario provided."""
-        import os
+        scenario_path = "assets/scenarios/default_test.yaml"
         try:
-            scenario_path = "assets/scenarios/default_test.yaml"
             self.scenario = ScenarioLoader.load_from_file(scenario_path)
             self.game_map = ScenarioLoader.create_game_map(self.scenario)
             ScenarioLoader.place_units(self.scenario, self.game_map)
@@ -1005,7 +1005,7 @@ class Game:
                 context.overlay = self._build_minimap_overlay()
         
         # Add dialog if active
-        if self.state.is_dialog_open():
+        if self.state.is_dialog_open() and self.state.active_dialog is not None:
             context.dialog = self._build_dialog(self.state.active_dialog)
         
         # Add battle forecast if active

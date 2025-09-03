@@ -5,18 +5,17 @@ Templates are loaded from YAML files (with JSON fallback) and converted to data 
 that specify initial values for each component based on the unit's class (Knight, Archer, etc.).
 """
 
-import json
 import os
 from dataclasses import dataclass
-from typing import Dict
+from typing import Union, TYPE_CHECKING
 
 from ..core.game_enums import UnitClass
 
-try:
-    import yaml
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
+if TYPE_CHECKING:
+    from ..core.game_enums import Team
+    from ..core.components import Entity
+
+import yaml
 
 
 @dataclass
@@ -27,19 +26,19 @@ class ComponentTemplate:
     values that should be passed to that component's constructor.
     """
     # HealthComponent initialization
-    health: Dict[str, int]
+    health: dict[str, int]
     
     # MovementComponent initialization  
-    movement: Dict[str, int]
+    movement: dict[str, int]
     
     # CombatComponent initialization
-    combat: Dict[str, int]
+    combat: dict[str, Union[int, str]]
     
     # StatusComponent initialization
-    status: Dict[str, int]
+    status: dict[str, int]
 
 
-def _load_unit_templates() -> Dict[UnitClass, ComponentTemplate]:
+def _load_unit_templates() -> dict[UnitClass, ComponentTemplate]:
     """Load unit templates from YAML file.
     
     Returns:
@@ -50,8 +49,6 @@ def _load_unit_templates() -> Dict[UnitClass, ComponentTemplate]:
     project_root = os.path.dirname(os.path.dirname(current_dir))
     yaml_path = os.path.join(project_root, "assets", "data", "units", "unit_templates.yaml")
     
-    if not HAS_YAML:
-        raise ImportError("PyYAML is required for unit templates. Please install pyyaml.")
     
     try:
         with open(yaml_path, 'r') as f:
@@ -82,7 +79,7 @@ def _load_unit_templates() -> Dict[UnitClass, ComponentTemplate]:
 
 
 # Load templates from YAML file
-UNIT_TEMPLATES: Dict[UnitClass, ComponentTemplate] = _load_unit_templates()
+UNIT_TEMPLATES: dict[UnitClass, ComponentTemplate] = _load_unit_templates()
 
 
 def get_template(unit_class: UnitClass) -> ComponentTemplate:
@@ -117,7 +114,6 @@ def create_unit_entity(name: str, unit_class: UnitClass, team: "Team", x: int, y
         Entity with all 5 core components configured according to class template
     """
     from ..core.components import Entity
-    from ..core.game_enums import Team
     from .components import (
         ActorComponent, HealthComponent, MovementComponent, 
         CombatComponent, StatusComponent
@@ -133,7 +129,18 @@ def create_unit_entity(name: str, unit_class: UnitClass, team: "Team", x: int, y
     entity.add_component(ActorComponent(entity, name, unit_class, team))
     entity.add_component(HealthComponent(entity, **template.health))
     entity.add_component(MovementComponent(entity, x, y, **template.movement))
-    entity.add_component(CombatComponent(entity, **template.combat))
+    
+    # For combat component, ensure proper types
+    combat_params = template.combat.copy()
+    entity.add_component(CombatComponent(
+        entity,
+        strength=int(combat_params['strength']),
+        defense=int(combat_params['defense']),
+        attack_range_min=int(combat_params['attack_range_min']),
+        attack_range_max=int(combat_params['attack_range_max']),
+        aoe_pattern=str(combat_params.get('aoe_pattern', 'single'))
+    ))
+    
     entity.add_component(StatusComponent(entity, **template.status))
     
     return entity

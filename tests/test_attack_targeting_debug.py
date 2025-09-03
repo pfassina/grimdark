@@ -8,11 +8,11 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.game.map import GameMap
-from src.game.unit_templates import create_unit_entity
-from src.core.game_enums import UnitClass, Team
-from src.game.unit import Unit
-from src.core.game_state import GameState
+# Import project modules (after path modification)
+from src.game.map import GameMap  # noqa: E402
+from src.core.game_enums import UnitClass, Team  # noqa: E402
+from src.game.unit import Unit  # noqa: E402
+from src.core.game_state import GameState  # noqa: E402
 
 def main():
     print("Testing Attack Targeting with AOE")
@@ -43,7 +43,7 @@ def main():
     
     # Calculate attack range for mage
     attack_range = game_map.calculate_attack_range(mage)
-    print(f"\nMage at (2,2) with range 1-2")
+    print("\nMage at (2,2) with range 1-2")
     print(f"Attack range positions: {sorted(attack_range)}")
     
     # Check what happens when cursor is at enemy position
@@ -76,7 +76,7 @@ def main():
     
     # Move cursor to enemy position
     state.cursor_x, state.cursor_y = 3, 2
-    print(f"\nCursor at (3, 2) - enemy position")
+    print("\nCursor at (3, 2) - enemy position")
     
     # Check if we should show AOE
     if (state.cursor_x, state.cursor_y) in state.attack_range:
@@ -85,11 +85,11 @@ def main():
         print(f"  Selected target: {state.selected_target}")
         print(f"  AOE tiles: {state.aoe_tiles}")
     else:
-        print(f"  Cursor not in attack range!")
+        print("  Cursor not in attack range!")
     
     # Move cursor to empty position in range
     state.cursor_x, state.cursor_y = 4, 2
-    print(f"\nCursor at (4, 2) - empty position in range")
+    print("\nCursor at (4, 2) - empty position in range")
     
     if (state.cursor_x, state.cursor_y) in state.attack_range:
         state.selected_target = (state.cursor_x, state.cursor_y)
@@ -97,7 +97,7 @@ def main():
         print(f"  Selected target: {state.selected_target}")
         print(f"  AOE tiles: {state.aoe_tiles}")
     else:
-        print(f"  Cursor not in attack range!")
+        print("  Cursor not in attack range!")
 
 if __name__ == "__main__":
     main()

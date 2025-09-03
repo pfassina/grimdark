@@ -5,7 +5,7 @@ that define unit placement, special areas, and interactive elements.
 """
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Optional, Any
 from enum import Enum
 import yaml
 import os
@@ -27,12 +27,12 @@ class SpawnPoint:
     """Defines a spawn location for a unit on the map."""
     name: str
     team: Team
-    position: Tuple[int, int]
+    position: tuple[int, int]
     unit_class: Optional[str] = None  # Optional unit class override
     facing: Optional[str] = None  # Optional facing direction
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "SpawnPoint":
+    def from_dict(cls, data: dict[str, Any]) -> "SpawnPoint":
         """Create a SpawnPoint from dictionary data."""
         return cls(
             name=data["name"],
@@ -47,7 +47,7 @@ class SpawnPoint:
 class Region:
     """Defines a special area on the map with gameplay effects."""
     name: str
-    rect: Tuple[int, int, int, int]  # x, y, width, height
+    rect: tuple[int, int, int, int]  # x, y, width, height
     defense_bonus: int = 0
     avoid_bonus: int = 0
     heal_per_turn: int = 0
@@ -55,7 +55,7 @@ class Region:
     description: Optional[str] = None
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Region":
+    def from_dict(cls, data: dict[str, Any]) -> "Region":
         """Create a Region from dictionary data."""
         rect_data = data["rect"]
         return cls(
@@ -79,14 +79,14 @@ class Trigger:
     """Defines an interactive trigger on the map."""
     name: str
     trigger_type: TriggerType
-    position: Optional[Tuple[int, int]] = None
+    position: Optional[tuple[int, int]] = None
     region_name: Optional[str] = None
     condition: Optional[str] = None
     action: Optional[str] = None
-    data: Dict[str, Any] = field(default_factory=dict)
+    data: dict[str, Any] = field(default_factory=dict)
     
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "Trigger":
+    def from_dict(cls, data: dict[str, Any]) -> "Trigger":
         """Create a Trigger from dictionary data."""
         pos_data = data.get("pos")
         return cls(
@@ -103,9 +103,9 @@ class Trigger:
 @dataclass
 class MapObjects:
     """Container for all objects associated with a map."""
-    spawn_points: List[SpawnPoint] = field(default_factory=list)
-    regions: List[Region] = field(default_factory=list)
-    triggers: List[Trigger] = field(default_factory=list)
+    spawn_points: list[SpawnPoint] = field(default_factory=list)
+    regions: list[Region] = field(default_factory=list)
+    triggers: list[Trigger] = field(default_factory=list)
     
     def get_spawn_point(self, name: str) -> Optional[SpawnPoint]:
         """Get a spawn point by name."""
@@ -114,7 +114,7 @@ class MapObjects:
                 return sp
         return None
     
-    def get_spawn_points_for_team(self, team: Team) -> List[SpawnPoint]:
+    def get_spawn_points_for_team(self, team: Team) -> list[SpawnPoint]:
         """Get all spawn points for a specific team."""
         return [sp for sp in self.spawn_points if sp.team == team]
     
@@ -125,7 +125,7 @@ class MapObjects:
                 return region
         return None
     
-    def get_regions_at(self, x: int, y: int) -> List[Region]:
+    def get_regions_at(self, x: int, y: int) -> list[Region]:
         """Get all regions at a specific position."""
         return [r for r in self.regions if r.contains_position(x, y)]
 

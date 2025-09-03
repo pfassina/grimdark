@@ -4,10 +4,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
-from src.core.renderer import RendererConfig
 from src.core.renderable import (
     RenderContext, TileRenderData, UnitRenderData,
-    CursorRenderData, OverlayTileRenderData
+    CursorRenderData
 )
 from src.game.map import GameMap
 from src.game.tile import TerrainType

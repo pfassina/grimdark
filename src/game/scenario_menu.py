@@ -1,17 +1,13 @@
 import os
 import json
-from typing import List, Optional, Dict, Any
+from typing import Optional
 from dataclasses import dataclass
 
 from ..core.input import InputEvent, Key
 from .scenario_loader import ScenarioLoader
 from .scenario import Scenario
 
-try:
-    import yaml
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
+import yaml
 
 
 @dataclass
@@ -28,10 +24,10 @@ class ScenarioMenu:
     
     def __init__(self, scenarios_dir: str = "assets/scenarios"):
         self.scenarios_dir = scenarios_dir
-        self.scenarios: List[ScenarioInfo] = []
+        self.scenarios: list[ScenarioInfo] = []
         self.selected_index = 0
-        self.display_items: List[str] = []
-        self.scenario_map: List[int] = []  # Maps display line to scenario index
+        self.display_items: list[str] = []
+        self.scenario_map: list[int] = []  # Maps display line to scenario index
         self.selected_display_line = 0
         self.discover_scenarios()
     
@@ -60,7 +56,7 @@ class ScenarioMenu:
         """Load basic scenario metadata without full scenario parsing."""
         try:
             with open(file_path, 'r') as f:
-                if file_path.endswith('.yaml') and HAS_YAML:
+                if file_path.endswith('.yaml'):
                     data = yaml.safe_load(f)
                 else:
                     data = json.load(f)
@@ -85,7 +81,7 @@ class ScenarioMenu:
             return self.scenarios[self.selected_index]
         return None
     
-    def get_menu_items(self, max_width: Optional[int] = None) -> tuple[List[str], List[int]]:
+    def get_menu_items(self, max_width: Optional[int] = None) -> tuple[list[str], list[int]]:
         """Get formatted menu items for display.
         
         Returns:

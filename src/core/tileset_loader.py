@@ -7,23 +7,23 @@ rather than hardcoded in the game logic or renderers.
 
 import yaml
 import os
-from typing import Dict, Any, Optional, Tuple
+from typing import Any, Optional
 from pathlib import Path
 
 
 class TilesetConfig:
     """Container for tileset configuration data."""
     
-    def __init__(self, config_data: Dict[str, Any]):
+    def __init__(self, config_data: dict[str, Any]):
         self.tiles = config_data.get('tiles', {})
         self.symbol_to_tile_id = config_data.get('symbol_to_tile_id', {})
         self.terrain_to_tile_id = config_data.get('terrain_to_tile_id', {})
     
-    def get_tile_config(self, tile_id: int) -> Optional[Dict[str, Any]]:
+    def get_tile_config(self, tile_id: int) -> Optional[dict[str, Any]]:
         """Get configuration for a specific tile ID."""
         return self.tiles.get(tile_id)
     
-    def get_terrain_gameplay_info(self, terrain_type: str) -> Dict[str, Any]:
+    def get_terrain_gameplay_info(self, terrain_type: str) -> dict[str, Any]:
         """Get gameplay info for a terrain type.
         
         Args:

@@ -8,7 +8,6 @@ compatibility.
 from typing import Optional
 
 from ..core.game_enums import UnitClass, Team
-from ..core.components import Entity
 from .unit_templates import create_unit_entity
 from .components import (
     ActorComponent, HealthComponent, MovementComponent, 
@@ -173,27 +172,32 @@ class Unit:
     @property
     def _actor(self) -> ActorComponent:
         """Get Actor component (internal helper)."""
-        return self.entity.require_component("Actor")
+        from typing import cast
+        return cast(ActorComponent, self.entity.require_component("Actor"))
     
     @property  
     def _health(self) -> HealthComponent:
         """Get Health component (internal helper)."""
-        return self.entity.require_component("Health")
+        from typing import cast
+        return cast(HealthComponent, self.entity.require_component("Health"))
     
     @property
     def _movement(self) -> MovementComponent:
         """Get Movement component (internal helper)."""
-        return self.entity.require_component("Movement")
+        from typing import cast
+        return cast(MovementComponent, self.entity.require_component("Movement"))
     
     @property
     def _combat(self) -> CombatComponent:
         """Get Combat component (internal helper)."""
-        return self.entity.require_component("Combat")
+        from typing import cast
+        return cast(CombatComponent, self.entity.require_component("Combat"))
     
     @property
     def _status(self) -> StatusComponent:
         """Get Status component (internal helper)."""
-        return self.entity.require_component("Status")
+        from typing import cast
+        return cast(StatusComponent, self.entity.require_component("Status"))
     
     
     # ============== Methods (delegate to components) ==============

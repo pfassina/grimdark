@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Optional, Any, TYPE_CHECKING, Union, Tuple
+from typing import Optional, Any, TYPE_CHECKING
 from abc import ABC, abstractmethod
 from enum import Enum
 
@@ -7,8 +7,6 @@ from ..core.game_enums import ObjectiveType, ObjectiveStatus
 
 if TYPE_CHECKING:
     from .map import GameMap
-    from .unit import Unit
-    from ..core.game_enums import Team
 
 
 @dataclass
@@ -180,7 +178,7 @@ class PlacementPolicy(Enum):
 class ScenarioMarker:
     """Named position marker for scenario use."""
     name: str
-    position: Tuple[int, int]
+    position: tuple[int, int]
     description: Optional[str] = None
     
     @classmethod
@@ -197,7 +195,7 @@ class ScenarioMarker:
 class ScenarioRegion:
     """Named region for scenario-based placement and triggers."""
     name: str
-    rect: Tuple[int, int, int, int]  # x, y, width, height
+    rect: tuple[int, int, int, int]  # x, y, width, height
     description: Optional[str] = None
     
     @classmethod
@@ -215,7 +213,7 @@ class ScenarioRegion:
         rx, ry, rw, rh = self.rect
         return rx <= x < rx + rw and ry <= y < ry + rh
     
-    def get_free_positions(self, game_map: "GameMap") -> list[Tuple[int, int]]:
+    def get_free_positions(self, game_map: "GameMap") -> list[tuple[int, int]]:
         """Get all free positions within this region."""
         positions = []
         rx, ry, rw, rh = self.rect
@@ -233,6 +231,8 @@ class ScenarioObject:
     """Interactive object placed in the scenario."""
     name: str
     object_type: str  # chest, door, portal, etc.
+    x: int = 0
+    y: int = 0
     properties: dict[str, Any] = field(default_factory=dict)
     
     @classmethod
@@ -270,7 +270,7 @@ class ScenarioTrigger:
 class ActorPlacement:
     """Placement information for units and objects."""
     actor_name: str
-    placement_at: Optional[Tuple[int, int]] = None
+    placement_at: Optional[tuple[int, int]] = None
     placement_marker: Optional[str] = None
     placement_region: Optional[str] = None
     placement_policy: PlacementPolicy = PlacementPolicy.RANDOM_FREE_TILE

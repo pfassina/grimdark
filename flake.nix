@@ -24,6 +24,8 @@
       devShells.default = pkgs.mkShell {
         buildInputs = [
           pythonPackages
+          pkgs.pyright
+          pkgs.ruff
         ];
 
         shellHook = ''

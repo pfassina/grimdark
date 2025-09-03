@@ -4,7 +4,6 @@ Battle calculation system for damage prediction and forecasting.
 This module provides battle forecast calculations separate from actual combat resolution,
 allowing the UI to show damage/hit/crit predictions without affecting game state.
 """
-from typing import Optional, Tuple
 from ..core.renderable import BattleForecastRenderData
 from .unit import Unit
 

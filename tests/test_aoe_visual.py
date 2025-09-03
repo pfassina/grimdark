@@ -9,13 +9,14 @@ import time
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.game.map import GameMap
-from src.game.unit import Unit
-from src.core.game_enums import UnitClass, Team
-from src.core.game_state import GameState, GamePhase, BattlePhase
-from src.core.renderable import RenderContext, AttackTargetRenderData
-from src.renderers.simple_renderer import SimpleRenderer
-from src.core.renderer import RendererConfig
+# Import project modules (after path modification)
+from src.game.map import GameMap  # noqa: E402
+from src.game.unit import Unit  # noqa: E402
+from src.core.game_enums import UnitClass, Team  # noqa: E402
+from src.core.game_state import GameState, GamePhase, BattlePhase  # noqa: E402
+from src.core.renderable import RenderContext, AttackTargetRenderData  # noqa: E402
+from src.renderers.simple_renderer import SimpleRenderer  # noqa: E402
+from src.core.renderer import RendererConfig  # noqa: E402
 
 def main():
     print("Testing AOE Attack Targeting Visual Display")
@@ -112,7 +113,8 @@ def main():
             for y in range(game_map.height):
                 for x in range(game_map.width):
                     tile = game_map.get_tile(x, y)
-                    context.tiles.append(TileRenderData(x, y, tile.terrain_type.name, 1))
+                    if tile is not None:
+                        context.tiles.append(TileRenderData(x, y, tile.terrain_type.name, 1))
             
             # Add units
             from src.core.renderable import UnitRenderData

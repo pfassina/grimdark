@@ -8,14 +8,10 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-from src.game.map import GameMap
-from src.game.unit import Unit
-from src.game.components import CombatComponent
-from src.core.game_enums import Team
-from src.core.game_state import GameState
-from src.game.game import Game
-from src.core.input import InputEvent, Key
-from src.core.renderable import RenderContext, AttackTargetRenderData
+# Import project modules (after path modification)
+from src.game.map import GameMap  # noqa: E402
+from src.core.game_enums import Team  # noqa: E402
+from src.core.renderable import AttackTargetRenderData  # noqa: E402
 
 def test_aoe_patterns():
     """Test AOE pattern calculation."""
@@ -56,7 +52,7 @@ def test_combat_component_aoe():
     
     # Create a test unit with mage stats
     from src.game.unit_templates import create_unit_entity
-    from src.core.game_enums import UnitClass, Team
+    from src.core.game_enums import UnitClass
     
     # Create a mage entity
     mage_entity = create_unit_entity(
@@ -70,7 +66,7 @@ def test_combat_component_aoe():
     # Access the combat component
     mage_combat = mage_entity.get_component("Combat")
     
-    print(f"\n1. Mage Combat Stats:")
+    print("\n1. Mage Combat Stats:")
     print(f"   Attack Range: {mage_combat.attack_range_min}-{mage_combat.attack_range_max}")
     print(f"   AOE Pattern: {mage_combat.aoe_pattern}")
     assert mage_combat.aoe_pattern == "cross", f"Expected 'cross' pattern, got {mage_combat.aoe_pattern}"
@@ -87,7 +83,7 @@ def test_combat_component_aoe():
     
     knight_combat = knight.get_component("Combat")
     
-    print(f"\n2. Knight Combat Stats:")
+    print("\n2. Knight Combat Stats:")
     print(f"   Attack Range: {knight_combat.attack_range_min}-{knight_combat.attack_range_max}")
     print(f"   AOE Pattern: {knight_combat.aoe_pattern}")
     assert knight_combat.aoe_pattern == "single", f"Expected 'single' pattern, got {knight_combat.aoe_pattern}"

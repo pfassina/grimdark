@@ -11,10 +11,15 @@ Each structure serves a specific architectural layer and should not be merged.
 """
 
 from dataclasses import dataclass
-from typing import Optional, Dict, Any
-from abc import ABC, abstractmethod
+from typing import Optional, TYPE_CHECKING
+from abc import ABC
 
 from .game_enums import Team, UnitClass
+
+if TYPE_CHECKING:
+    from ..game.unit import Unit
+    from ..game.scenario import UnitData
+    from .renderable import UnitRenderData
 
 
 @dataclass
@@ -107,7 +112,7 @@ class DataConverter:
         return unit
     
     @staticmethod
-    def units_to_render_data_list(units: Dict[str, "Unit"], highlight_func=None) -> list["UnitRenderData"]:
+    def units_to_render_data_list(units: dict[str, "Unit"], highlight_func=None) -> list["UnitRenderData"]:
         """Convert a collection of Units to a list of UnitRenderData.
         
         Args:
@@ -132,7 +137,9 @@ class ValidationMixin:
         """Validate that position is within map bounds."""
         if not hasattr(self, 'x') or not hasattr(self, 'y'):
             return False
-        return 0 <= self.x < max_width and 0 <= self.y < max_height
+        x = getattr(self, 'x', None)
+        y = getattr(self, 'y', None)
+        return 0 <= x < max_width and 0 <= y < max_height if x is not None and y is not None else False
     
     def validate_required_fields(self, required_fields: list[str]) -> bool:
         """Validate that all required fields are present and non-None."""
@@ -143,6 +150,6 @@ class ValidationMixin:
 
 
 # Type aliases for cleaner code
-UnitCollection = Dict[str, "Unit"]
+UnitCollection = dict[str, "Unit"]
 RenderDataCollection = list["UnitRenderData"]
 ScenarioDataCollection = list["UnitData"]

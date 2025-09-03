@@ -1,16 +1,11 @@
 import json
 import os
-from typing import Optional, Any, Tuple
+from typing import Optional, Any
 from pathlib import Path
 
 from ..core.data_structures import DataConverter
-from ..core.game_enums import UnitClass, Team
 
-try:
-    import yaml
-    HAS_YAML = True
-except ImportError:
-    HAS_YAML = False
+import yaml
 
 from .scenario import (
     Scenario, UnitData, ScenarioSettings, Objective,
@@ -20,7 +15,6 @@ from .scenario import (
     ScenarioMarker, ScenarioRegion, ScenarioObject, ScenarioTrigger, ActorPlacement
 )
 from .map import GameMap
-from .unit import Unit
 
 
 class ScenarioLoader:
@@ -31,10 +25,8 @@ class ScenarioLoader:
         """Load a scenario from a YAML file."""
         path_obj = Path(file_path)
         
-        if not HAS_YAML:
-            raise ImportError("PyYAML is required for scenario loading. Please install pyyaml.")
-        
         # Load YAML file
+        
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
                 data = yaml.safe_load(f)
@@ -187,7 +179,6 @@ class ScenarioLoader:
         This method processes the placement information and assigns actual
         coordinates to units and objects based on markers, regions, and placement policies.
         """
-        import random
         
         # Create lookup tables for actors
         units_by_name = {unit.name: unit for unit in scenario.units}
@@ -223,14 +214,13 @@ class ScenarioLoader:
                 actor.x = x
                 actor.y = y
             else:
-                # For objects, we might need to store coordinates differently
-                # For now, we'll add them to the object's properties
-                actor.properties['x'] = x
-                actor.properties['y'] = y
+                # For objects, set x and y directly now that ScenarioObject has them
+                actor.x = x
+                actor.y = y
     
     @staticmethod
     def _resolve_placement_to_coordinates(placement: ActorPlacement, scenario: Scenario, 
-                                        game_map: GameMap) -> Optional[Tuple[int, int]]:
+                                        game_map: GameMap) -> Optional[tuple[int, int]]:
         """Resolve a single placement intent to coordinates."""
         import random
         
@@ -400,7 +390,7 @@ class ScenarioLoader:
                             game_map.set_tile(patch_x, patch_y, terrain_type)
     
     @staticmethod
-    def validate_scenario(scenario: Scenario, game_map: GameMap = None) -> list[str]:
+    def validate_scenario(scenario: Scenario, game_map: Optional[GameMap] = None) -> list[str]:
         """Validate a scenario for common errors.
         
         Returns a list of validation error messages. Empty list means valid.
@@ -547,7 +537,7 @@ class ScenarioLoader:
         for unit in scenario.units:
             unit_dict = {
                 "name": unit.name,
-                "class": unit.actor.unit_class,
+                "class": unit.unit_class,
                 "team": unit.team,
                 "position": [unit.x, unit.y]
             }

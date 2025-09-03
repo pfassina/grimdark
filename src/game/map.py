@@ -5,7 +5,6 @@ import csv
 import os
 
 from ..core.game_enums import TerrainType, Team
-from ..core.game_info import TERRAIN_DATA
 from ..core.tileset_loader import get_tileset_config
 from .tile import Tile
 from .unit import Unit

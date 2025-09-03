@@ -52,7 +52,7 @@ def main():
         if test_scenario(scenario):
             passed += 1
     
-    print(f"\n=== RESULTS ===")
+    print("\n=== RESULTS ===")
     print(f"Passed: {passed}/{total} scenarios")
     
     if passed == total:

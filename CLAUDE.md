@@ -33,6 +33,11 @@ python demos/demo_map_loader.py assets/maps/fortress
 
 # Update Nix flake dependencies
 nix flake update --update-input nixpkgs
+
+# Code quality and linting
+pyright .              # Type checking and error detection
+ruff check .           # Code linting and style checking
+ruff check . --fix     # Auto-fix linting issues where possible
 ```
 
 ## Testing Workflow for Claude Code
@@ -77,6 +82,11 @@ For comprehensive feature testing, create targeted demo scripts or enhance the s
 
 - This repository uses a Nix flake for development. You need to explicitly call it when running python scripts.
 - Run commands with `nix develop` prefix for the development shell
+- The development environment includes:
+  - Python 3.11 with required packages (numpy, pandas, pyyaml)
+  - **Pyright** for static type checking
+  - **Ruff** for fast linting and code formatting
+  - All development tools are pre-configured and ready to use
 
 ## Architecture
 
@@ -195,6 +205,61 @@ When creating new maps (geometry only):
 3. Optional: `walls.csv`, `features.csv` for additional terrain layers
 4. **Do NOT add**: units, objects, spawns, or gameplay elements
 5. Terrain properties defined in `assets/tileset.yaml`
+
+## Code Style
+
+This project follows modern Python conventions. When writing or modifying code:
+
+### Type Hints
+- **Use built-in type conventions** (Python 3.9+):
+  - `dict[str, Any]` instead of `Dict[str, Any]`
+  - `list[str]` instead of `List[str]`
+  - `tuple[int, int]` instead of `Tuple[int, int]`
+  - `set[str]` instead of `Set[str]`
+- Only import from `typing` module for advanced types like `Optional`, `Union`, `TYPE_CHECKING`, etc.
+- Always include type hints for function parameters and return values
+- Use `Optional[Type]` for nullable values instead of `Union[Type, None]`
+
+### General Style
+- Follow PEP 8 conventions for naming and formatting
+- Use descriptive variable and function names
+- Add docstrings for public methods and classes
+- Keep functions focused on single responsibilities
+- Prefer composition over inheritance where appropriate
+
+### Code Quality Tools
+- **Pyright**: Static type checker for comprehensive type analysis
+- **Ruff**: Fast Python linter for code style and quality issues
+- Both tools are included in the Nix development environment
+- Use `TYPE_CHECKING` imports to resolve circular dependency issues
+
+### Mandatory Code Quality Workflow
+**CRITICAL**: Always complete any coding task by running both linting tools and fixing all diagnostic errors:
+
+1. **Run pyright for type checking**:
+   ```bash
+   nix develop --command pyright .
+   ```
+   - Fix all type errors, undefined variables, and import issues
+   - Use proper type annotations and Optional types
+   - Resolve circular imports with TYPE_CHECKING pattern
+
+2. **Run ruff for linting and style**:
+   ```bash
+   nix develop --command ruff check . --fix  # Auto-fix what's possible
+   nix develop --command ruff check .        # Check remaining issues
+   ```
+   - Fix unused imports, undefined variables, and style violations
+   - Ensure proper import ordering and formatting
+   - Address any remaining manual fixes needed
+
+3. **Verify functionality**:
+   ```bash
+   nix develop --command python tests/test_architecture.py  # Core functionality
+   nix develop --command python demos/demo.py              # Basic game demo
+   ```
+
+**Never consider a task complete until both pyright and ruff report zero errors** (or only acceptable warnings with proper justification).
 
 ## Testing
 

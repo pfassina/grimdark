@@ -6,7 +6,7 @@ about game entities (terrain, units, etc.) with common interfaces.
 
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
-from typing import Dict, Any
+from typing import Any
 
 from .game_enums import TerrainType, UnitClass, TERRAIN_NAMES, UNIT_CLASS_NAMES
 
@@ -18,12 +18,12 @@ class BaseInfo(ABC):
     symbol: str
     
     @abstractmethod
-    def get_display_properties(self) -> Dict[str, Any]:
+    def get_display_properties(self) -> dict[str, Any]:
         """Get properties used for display/rendering."""
         pass
     
     @abstractmethod
-    def get_gameplay_properties(self) -> Dict[str, Any]:
+    def get_gameplay_properties(self) -> dict[str, Any]:
         """Get properties used for game mechanics."""
         pass
 
@@ -45,14 +45,14 @@ class UnitClassInfo(BaseInfo):
     """Static information about a unit class."""
     base_stats: UnitStats
     
-    def get_display_properties(self) -> Dict[str, Any]:
+    def get_display_properties(self) -> dict[str, Any]:
         """Get display properties for this unit class."""
         return {
             "name": self.name,
             "symbol": self.symbol,
         }
     
-    def get_gameplay_properties(self) -> Dict[str, Any]:
+    def get_gameplay_properties(self) -> dict[str, Any]:
         """Get gameplay properties for this unit class."""
         return {
             "base_stats": self.base_stats,
@@ -68,14 +68,14 @@ class TerrainInfo(BaseInfo):
     blocks_movement: bool = False
     blocks_vision: bool = False
     
-    def get_display_properties(self) -> Dict[str, Any]:
+    def get_display_properties(self) -> dict[str, Any]:
         """Get display properties for this terrain."""
         return {
             "name": self.name,
             "symbol": self.symbol,
         }
     
-    def get_gameplay_properties(self) -> Dict[str, Any]:
+    def get_gameplay_properties(self) -> dict[str, Any]:
         """Get gameplay properties for this terrain."""
         return {
             "move_cost": self.move_cost,
@@ -87,7 +87,7 @@ class TerrainInfo(BaseInfo):
 
 
 # Centralized data for all unit classes
-UNIT_CLASS_DATA: Dict[UnitClass, UnitClassInfo] = {
+UNIT_CLASS_DATA: dict[UnitClass, UnitClassInfo] = {
     UnitClass.KNIGHT: UnitClassInfo(
         UNIT_CLASS_NAMES[UnitClass.KNIGHT], "K", 
         UnitStats(25, 7, 5, 3, 3, 1, 1)
@@ -115,7 +115,7 @@ UNIT_CLASS_DATA: Dict[UnitClass, UnitClassInfo] = {
 }
 
 # Centralized data for all terrain types
-TERRAIN_DATA: Dict[TerrainType, TerrainInfo] = {
+TERRAIN_DATA: dict[TerrainType, TerrainInfo] = {
     TerrainType.PLAIN: TerrainInfo(
         TERRAIN_NAMES[TerrainType.PLAIN], ".", 1, 0, 0
     ),

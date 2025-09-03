@@ -41,7 +41,6 @@ def main():
     
     try:
         # Just run a couple frames to test initialization
-        import time
         game.initialize()
         print("✓ Game initialized with default scenario")
         

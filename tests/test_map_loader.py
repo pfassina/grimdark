@@ -15,11 +15,16 @@ def test_map_loading():
     print(f"Loaded map: {game_map.width}x{game_map.height}")
     
     # Check some specific tiles from fortress map
-    assert game_map.get_tile(0, 0).terrain_type == TerrainType.WALL
-    assert game_map.get_tile(1, 1).terrain_type == TerrainType.PLAIN
-    assert game_map.get_tile(2, 2).terrain_type == TerrainType.FOREST
-    assert game_map.get_tile(6, 5).terrain_type == TerrainType.BRIDGE
-    assert game_map.get_tile(7, 9).terrain_type == TerrainType.FORT
+    tile = game_map.get_tile(0, 0)
+    assert tile is not None and tile.terrain_type == TerrainType.WALL
+    tile = game_map.get_tile(1, 1)
+    assert tile is not None and tile.terrain_type == TerrainType.PLAIN
+    tile = game_map.get_tile(2, 2)
+    assert tile is not None and tile.terrain_type == TerrainType.FOREST
+    tile = game_map.get_tile(6, 5)
+    assert tile is not None and tile.terrain_type == TerrainType.BRIDGE
+    tile = game_map.get_tile(7, 9)
+    assert tile is not None and tile.terrain_type == TerrainType.FORT
     
     print("Map loaded successfully!")
     print("✓ All terrain types verified correctly")

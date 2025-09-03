@@ -10,7 +10,7 @@ from ..core.renderable import (
     RenderContext, TileRenderData, UnitRenderData, 
     CursorRenderData, OverlayTileRenderData, MenuRenderData,
     BattleForecastRenderData, DialogRenderData, BannerRenderData,
-    OverlayRenderData, AttackTargetRenderData, LayerType
+    OverlayRenderData, LayerType
 )
 from ..core.input import InputEvent, Key
 from ..core.tileset_loader import get_tileset_config
@@ -22,6 +22,7 @@ class TerminalRenderer(Renderer):
         super().__init__(config)
         self._old_settings = None
         self._buffer = []
+        self._cursor_position: Optional[tuple[int, int]] = None
         # Load tileset configuration for gameplay data only
         self.tileset_config = get_tileset_config()
         
@@ -209,8 +210,9 @@ class TerminalRenderer(Renderer):
                                  screen_width, self.bottom_strip_height - 1)
         
         # Apply cursor effect AFTER panels are rendered (only to map area)
-        if hasattr(self, '_cursor_position') and self._cursor_position:
-            cx, cy = self._cursor_position
+        cursor_pos: Optional[tuple[int, int]] = self._cursor_position
+        if cursor_pos is not None:
+            cx, cy = cursor_pos
             # Only apply cursor effect if it's in the map viewport area
             if cx < map_viewport_width and cy < map_viewport_height:
                 colors[cy][cx] = "\033[7m" + (colors[cy][cx] if colors[cy][cx] else "")
@@ -498,7 +500,7 @@ class TerminalRenderer(Renderer):
             if y + height - 1 < len(grid):
                 colors[y + height - 1][x + i] = self.terminal_codes["text_dim"]
     
-    def _draw_text(self, grid: list[list[str]], text: str, x: int, y: int, max_width: int, color: str = "", colors: list[list[str]] = None) -> None:
+    def _draw_text(self, grid: list[list[str]], text: str, x: int, y: int, max_width: int, color: str = "", colors: Optional[list[list[str]]] = None) -> None:
         """Draw text at the specified position, truncating if needed."""
         if y >= len(grid):
             return
@@ -573,8 +575,7 @@ class TerminalRenderer(Renderer):
                 colors[screen_y][screen_x] = self.ui_colors.get(item.overlay_type, "")
             
             elif hasattr(item, 'target_type'):  # AttackTargetRenderData
-                # Store original symbol and color before modifying
-                original_symbol = grid[screen_y][screen_x]
+                # Store original color before modifying
                 original_color = colors[screen_y][screen_x]
                 
                 if item.target_type == "range":

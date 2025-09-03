@@ -1,0 +1,9 @@
+{
+    "include": ["./src"],
+    "exclude": ["tests", "demos", ".direnv", "**/.direnv/**"],
+    "reportUnusedImport": "warning",
+    "reportUnusedVariable": "warning",
+    "reportUnusedFunction": "warning",
+    "reportUnusedClass": "warning",
+    "reportUnnecessaryTypeIgnoreComment": "warning"
+}

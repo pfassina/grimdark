@@ -47,6 +47,17 @@ class Tile:
         return self._info.blocks_vision
     
     def can_enter(self, unit: Optional["Unit"] = None) -> bool:
+        """Check if a unit can enter this tile.
+        
+        Args:
+            unit: The unit trying to enter (optional, for future unit-specific movement rules)
+            
+        TODO: Implement unit-specific movement rules:
+        - Flying units could cross water/mountains
+        - Cavalry might have restrictions in forests
+        - Ships could only move on water
+        For now, the unit parameter is kept for API consistency and future expansion.
+        """
         if self.blocks_movement:
             return False
         return True

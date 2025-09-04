@@ -38,6 +38,7 @@ nix flake update --update-input nixpkgs
 pyright .              # Type checking and error detection
 ruff check .           # Code linting and style checking
 ruff check . --fix     # Auto-fix linting issues where possible
+ruff check . --select ARG  # Check for unused function/method parameters
 ```
 
 ## Testing Workflow for Claude Code
@@ -248,8 +249,10 @@ This project follows modern Python conventions. When writing or modifying code:
    ```bash
    nix develop --command ruff check . --fix  # Auto-fix what's possible
    nix develop --command ruff check .        # Check remaining issues
+   nix develop --command ruff check . --select ARG  # Check for unused parameters
    ```
    - Fix unused imports, undefined variables, and style violations
+   - Remove or properly use unused function/method parameters
    - Ensure proper import ordering and formatting
    - Address any remaining manual fixes needed
 

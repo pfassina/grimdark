@@ -18,7 +18,7 @@ from .game_enums import Team, UnitClass
 
 if TYPE_CHECKING:
     from ..game.unit import Unit
-    from ..game.scenario import UnitData
+    from ..game.scenario_structures import UnitData
     from .renderable import UnitRenderData
 
 
@@ -66,12 +66,11 @@ class DataConverter:
         )
     
     @staticmethod
-    def scenario_data_to_unit(unit_data: "UnitData", scenario_dir: str = "") -> "Unit":
+    def scenario_data_to_unit(unit_data: "UnitData") -> "Unit":
         """Convert scenario UnitData to a game Unit instance.
         
         Args:
             unit_data: UnitData from scenario loading
-            scenario_dir: Directory path for relative references (unused for units)
             
         Returns:
             Fully initialized Unit instance

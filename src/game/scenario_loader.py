@@ -7,12 +7,16 @@ from ..core.data_structures import DataConverter
 
 import yaml
 
-from .scenario import (
-    Scenario, UnitData, ScenarioSettings, Objective,
+from .scenario import Scenario
+from .scenario_structures import (
+    UnitData, ScenarioSettings,
+    ScenarioMarker, ScenarioRegion, ScenarioObject, ScenarioTrigger, ActorPlacement
+)
+from .objectives import (
+    Objective,
     DefeatAllEnemiesObjective, SurviveTurnsObjective, ReachPositionObjective,
     DefeatUnitObjective, ProtectUnitObjective, PositionCapturedObjective,
-    TurnLimitObjective, AllUnitsDefeatedObjective,
-    ScenarioMarker, ScenarioRegion, ScenarioObject, ScenarioTrigger, ActorPlacement
+    TurnLimitObjective, AllUnitsDefeatedObjective
 )
 from .map import GameMap
 
@@ -150,14 +154,14 @@ class ScenarioLoader:
             # Victory objectives
             if "victory" in obj_data:
                 for obj in obj_data["victory"]:
-                    parsed_obj = ScenarioLoader._parse_objective(obj, is_victory=True)
+                    parsed_obj = ScenarioLoader._parse_objective(obj)
                     if parsed_obj:
                         scenario.victory_objectives.append(parsed_obj)
             
             # Defeat objectives
             if "defeat" in obj_data:
                 for obj in obj_data["defeat"]:
-                    parsed_obj = ScenarioLoader._parse_objective(obj, is_victory=False)
+                    parsed_obj = ScenarioLoader._parse_objective(obj)
                     if parsed_obj:
                         scenario.defeat_objectives.append(parsed_obj)
         
@@ -273,7 +277,7 @@ class ScenarioLoader:
         return None
     
     @staticmethod
-    def _parse_objective(obj_data: dict[str, Any], is_victory: bool) -> Optional[Objective]:
+    def _parse_objective(obj_data: dict[str, Any]) -> Optional[Objective]:
         """Parse a single objective from data."""
         obj_type = obj_data.get("type")
         

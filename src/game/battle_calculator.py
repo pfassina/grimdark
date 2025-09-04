@@ -34,7 +34,7 @@ class BattleCalculator:
         crit_chance = BattleCalculator._calculate_crit_chance(attacker, defender)
         
         # Counter-attack possibility
-        can_counter = BattleCalculator._can_counter_attack(attacker, defender, weapon_range)
+        can_counter = BattleCalculator._can_counter_attack(defender, weapon_range)
         counter_damage = 0
         if can_counter:
             counter_damage = BattleCalculator._calculate_damage(defender, attacker)
@@ -76,9 +76,10 @@ class BattleCalculator:
     @staticmethod
     def _calculate_crit_chance(attacker: Unit, defender: Unit) -> int:
         """Calculate critical hit chance percentage (0-100)."""
-        # Basic formula based on attacker speed
+        # Formula based on speed difference between attacker and defender
         base_crit = 5  # Base crit rate
-        speed_bonus = max(0, attacker.status.speed - 10)  # Bonus for speed > 10
+        speed_diff = attacker.status.speed - defender.status.speed
+        speed_bonus = max(0, speed_diff * 2)  # 2% per point of speed advantage
         
         crit_chance = base_crit + speed_bonus
         
@@ -86,7 +87,7 @@ class BattleCalculator:
         return max(0, min(30, crit_chance))
     
     @staticmethod
-    def _can_counter_attack(attacker: Unit, defender: Unit, weapon_range: int) -> bool:
+    def _can_counter_attack(defender: Unit, weapon_range: int) -> bool:
         """Determine if the defender can counter-attack."""
         # Simple rule: can counter if both units are adjacent (range 1)
         # and defender is still alive and can act

@@ -1,0 +1,13 @@
+[tool.ruff]
+# Exclude directories
+exclude = [
+    ".direnv",
+    "tests",
+    "demos",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Objective methods use abstract interface pattern - parameters needed for consistency
+"src/game/scenario.py" = ["ARG002"]
+# Tile.can_enter keeps unit parameter for future extensibility (documented in code)
+"src/game/tile.py" = ["ARG002"]

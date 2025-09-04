@@ -5,5 +5,9 @@
     "reportUnusedVariable": "warning",
     "reportUnusedFunction": "warning",
     "reportUnusedClass": "warning",
-    "reportUnnecessaryTypeIgnoreComment": "warning"
+    "reportUnusedParameter": "warning",
+    "reportUnnecessaryTypeIgnoreComment": "warning",
+    "reportGeneralTypeIssues": "warning",
+    "reportOptionalSubscript": "warning",
+    "reportOptionalMemberAccess": "warning"
 }

@@ -3,10 +3,11 @@ from typing import Optional
 import numpy as np
 import csv
 import os
+from numpy.typing import NDArray
 
 from ..core.game_enums import TerrainType, Team
 from ..core.tileset_loader import get_tileset_config
-from ..core.data_structures import Vector2
+from ..core.data_structures import Vector2, VectorArray
 from .tile import Tile
 from .unit import Unit
 
@@ -19,10 +20,17 @@ class GameMap:
     units: dict[str, Unit] = field(default_factory=dict)
     
     def __post_init__(self):
-        self.tiles = np.empty((self.height, self.width), dtype=object)
-        for y in range(self.height):
-            for x in range(self.width):
-                self.tiles[y, x] = Tile(Vector2(y, x), TerrainType.PLAIN)
+        # Create structured array for efficient tile storage
+        # Use optimal dtypes: uint8 for terrain (8 values), int8 for elevation (-128 to 127)
+        tile_dtype = np.dtype([
+            ('terrain_type', np.uint8),
+            ('elevation', np.int8)
+        ])
+        
+        self.tiles = np.zeros((self.height, self.width), dtype=tile_dtype)
+        # Initialize all tiles to PLAIN terrain with 0 elevation
+        self.tiles['terrain_type'] = TerrainType.PLAIN.value
+        self.tiles['elevation'] = 0
     
     @classmethod
     def from_csv_layers(cls, map_directory: str) -> "GameMap":
@@ -118,14 +126,62 @@ class GameMap:
         
         return game_map
     
-    def get_tile(self, position: Vector2) -> Optional[Tile]:
+    def get_tile_data(self, position: Vector2) -> Optional[tuple[TerrainType, int]]:
+        """Get terrain type and elevation at position directly from structured array."""
         if self.is_valid_position(position):
-            return self.tiles[position.y, position.x]
+            tile_data = self.tiles[position.y, position.x]
+            terrain_type = TerrainType(tile_data['terrain_type'])
+            elevation = int(tile_data['elevation'])
+            return (terrain_type, elevation)
+        return None
+    
+    def get_tile(self, position: Vector2) -> Optional[Tile]:
+        """Get tile at position. Legacy method for compatibility."""
+        if self.is_valid_position(position):
+            tile_data = self.tiles[position.y, position.x]
+            terrain_type = TerrainType(tile_data['terrain_type'])
+            elevation = int(tile_data['elevation'])
+            return Tile(position, terrain_type, elevation)
         return None
     
     def set_tile(self, position: Vector2, terrain_type: TerrainType, elevation: int = 0):
+        """Set tile at position using structured array for efficiency."""
         if self.is_valid_position(position):
-            self.tiles[position.y, position.x] = Tile(position, terrain_type, elevation)
+            self.tiles[position.y, position.x] = (terrain_type.value, elevation)
+    
+    def get_terrain_type(self, position: Vector2) -> Optional[TerrainType]:
+        """Get terrain type directly from structured array (faster than get_tile)."""
+        if self.is_valid_position(position):
+            terrain_value = self.tiles[position.y, position.x]['terrain_type']
+            return TerrainType(terrain_value)
+        return None
+    
+    def get_elevation(self, position: Vector2) -> Optional[int]:
+        """Get elevation directly from structured array (faster than get_tile)."""
+        if self.is_valid_position(position):
+            return int(self.tiles[position.y, position.x]['elevation'])
+        return None
+    
+    def get_terrain_mask(self, terrain_type: TerrainType) -> NDArray[np.bool_]:
+        """Get boolean mask of all positions with specified terrain type."""
+        return self.tiles['terrain_type'] == terrain_type.value
+    
+    def find_terrain_positions(self, terrain_type: TerrainType) -> VectorArray:
+        """Find all positions with specified terrain type using vectorized operations."""
+        mask = self.get_terrain_mask(terrain_type)
+        y_coords, x_coords = np.where(mask)
+        positions = np.column_stack((y_coords, x_coords)).astype(np.int16)
+        return VectorArray(positions)
+    
+    def is_terrain_blocking(self, terrain_type: TerrainType) -> bool:
+        """Check if terrain type blocks movement using direct lookup."""
+        from ..core.game_info import TERRAIN_DATA
+        return TERRAIN_DATA[terrain_type].blocks_movement
+    
+    def get_terrain_move_cost(self, terrain_type: TerrainType) -> int:
+        """Get movement cost for terrain type using direct lookup."""
+        from ..core.game_info import TERRAIN_DATA
+        return TERRAIN_DATA[terrain_type].move_cost
     
     def is_valid_position(self, position: Vector2) -> bool:
         return 0 <= position.x < self.width and 0 <= position.y < self.height
@@ -137,8 +193,9 @@ class GameMap:
         if self.get_unit_at(unit.position):
             return False
         
-        tile = self.get_tile(unit.position)
-        if not tile or not tile.can_enter(unit):
+        # Check if tile can be entered using direct terrain access
+        terrain_type = self.get_terrain_type(unit.position)
+        if not terrain_type or self.is_terrain_blocking(terrain_type):
             return False
         
         self.units[unit.unit_id] = unit
@@ -170,78 +227,161 @@ class GameMap:
         if self.get_unit_at(position):
             return False
         
-        tile = self.get_tile(position)
-        if not tile or not tile.can_enter(unit):
+        # Check if tile can be entered using direct terrain access
+        terrain_type = self.get_terrain_type(position)
+        if not terrain_type or self.is_terrain_blocking(terrain_type):
             return False
         
         unit.move_to(position)
         return True
     
-    def calculate_movement_range(self, unit: Unit) -> set[Vector2]:
+    def calculate_movement_range(self, unit: Unit) -> VectorArray:
+        """Calculate movement range using numpy-accelerated pathfinding."""
         if not unit or not unit.can_move:
-            return set()
+            return VectorArray()
         
         movement = unit.movement.movement_points
-        visited = set()
-        reachable = set()
-        frontier = [(unit.position, movement)]
-        
-        while frontier:
-            pos, remaining = frontier.pop(0)
-            
-            if pos in visited:
-                continue
-            
-            visited.add(pos)
-            
-            if pos != unit.position:
-                existing_unit = self.get_unit_at(pos)
-                if existing_unit and existing_unit.team != unit.team:
-                    continue
-            
-            reachable.add(pos)
-            
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                next_pos = Vector2(pos.y + dy, pos.x + dx)
-                
-                if not self.is_valid_position(next_pos):
-                    continue
-                
-                tile = self.get_tile(next_pos)
-                if not tile or tile.blocks_movement:
-                    continue
-                
-                cost = tile.move_cost
-                if remaining >= cost:
-                    frontier.append((next_pos, remaining - cost))
-        
-        return reachable
+        return self._calculate_movement_range_vectorized(unit.position, movement, unit.team)
     
-    def calculate_attack_range(self, unit: Unit, from_position: Optional[Vector2] = None) -> set[Vector2]:
+    def _calculate_movement_range_vectorized(self, start_pos: Vector2, movement_points: int, unit_team: Team) -> VectorArray:
+        """Vectorized implementation of movement range calculation.
+        
+        Uses numpy arrays for distance calculations and flooding algorithm
+        for significant performance improvement over the original loop-based version.
+        """
+        # Create arrays for pathfinding
+        height, width = self.height, self.width
+        
+        # Distance array: -1 = unvisited, >= 0 = movement cost to reach
+        # Use int16 for distance values (sufficient for any reasonable movement cost)
+        distances = np.full((height, width), -1, dtype=np.int16)
+        distances[start_pos.y, start_pos.x] = 0
+        
+        # Get terrain data for fast access
+        terrain_types = self.tiles['terrain_type']
+        
+        # Import terrain data for move costs and blocking
+        from ..core.game_info import TERRAIN_DATA
+        
+        # Create movement cost lookup array for all terrain types
+        max_terrain_value = max(terrain.value for terrain in TerrainType)
+        move_costs = np.ones(max_terrain_value + 1, dtype=np.uint8)  # Movement costs are small values
+        blocks_movement = np.zeros(max_terrain_value + 1, dtype=np.bool_)
+        
+        for terrain_type in TerrainType:
+            terrain_info = TERRAIN_DATA[terrain_type]
+            move_costs[terrain_type.value] = terrain_info.move_cost
+            blocks_movement[terrain_type.value] = terrain_info.blocks_movement
+        
+        # Apply movement costs and blocking to the map
+        terrain_move_costs = move_costs[terrain_types]
+        terrain_blocks = blocks_movement[terrain_types]
+        
+        # Mark blocked tiles as unreachable
+        distances[terrain_blocks] = -2  # -2 = permanently blocked
+        
+        # Flood fill using Dijkstra-like algorithm
+        changed = True
+        while changed:
+            changed = False
+            current_distances = distances.copy()
+            
+            # Check all four directions using array slicing
+            # Right movement
+            new_distances = current_distances[:-1, :] + terrain_move_costs[1:, :]
+            mask = ((distances[1:, :] == -1) & (current_distances[:-1, :] >= 0) & 
+                   (new_distances <= movement_points))
+            if np.any(mask):
+                distances[1:, :][mask] = new_distances[mask]
+                changed = True
+            
+            # Left movement  
+            new_distances = current_distances[1:, :] + terrain_move_costs[:-1, :]
+            mask = ((distances[:-1, :] == -1) & (current_distances[1:, :] >= 0) &
+                   (new_distances <= movement_points))
+            if np.any(mask):
+                distances[:-1, :][mask] = new_distances[mask]
+                changed = True
+            
+            # Down movement
+            new_distances = current_distances[:, :-1] + terrain_move_costs[:, 1:]
+            mask = ((distances[:, 1:] == -1) & (current_distances[:, :-1] >= 0) &
+                   (new_distances <= movement_points))
+            if np.any(mask):
+                distances[:, 1:][mask] = new_distances[mask]
+                changed = True
+            
+            # Up movement
+            new_distances = current_distances[:, 1:] + terrain_move_costs[:, :-1]
+            mask = ((distances[:, :-1] == -1) & (current_distances[:, 1:] >= 0) &
+                   (new_distances <= movement_points))
+            if np.any(mask):
+                distances[:, :-1][mask] = new_distances[mask]
+                changed = True
+        
+        # Filter out positions occupied by enemy units
+        reachable_mask = distances >= 0
+        y_coords, x_coords = np.where(reachable_mask)
+        
+        # Check for unit conflicts (this part still needs unit position lookup)
+        valid_positions = []
+        for y, x in zip(y_coords, x_coords):
+            pos = Vector2(int(y), int(x))
+            if pos != start_pos:  # Skip starting position check
+                existing_unit = self.get_unit_at(pos)
+                if existing_unit and existing_unit.team != unit_team:
+                    continue
+            valid_positions.append([int(y), int(x)])
+        
+        if not valid_positions:
+            return VectorArray([start_pos])  # At least return starting position
+        
+        return VectorArray(np.array(valid_positions, dtype=np.int16))
+    
+    def calculate_attack_range(self, unit: Unit, from_position: Optional[Vector2] = None) -> VectorArray:
+        """Calculate attack range using numpy-accelerated distance calculations."""
         if not unit or not unit.is_alive:
-            return set()
+            return VectorArray()
         
-        if from_position:
-            pos = from_position
-        else:
-            pos = unit.position
-        
-        attack_range = set()
+        pos = from_position if from_position else unit.position
         min_range = unit.combat.attack_range_min
         max_range = unit.combat.attack_range_max
         
-        for dy in range(-max_range, max_range + 1):
-            for dx in range(-max_range, max_range + 1):
-                distance = abs(dx) + abs(dy)
-                
-                if min_range <= distance <= max_range:
-                    target_pos = Vector2(pos.y + dy, pos.x + dx)
-                    if self.is_valid_position(target_pos):
-                        attack_range.add(target_pos)
-        
-        return attack_range
+        return self._calculate_attack_range_vectorized(pos, min_range, max_range)
     
-    def calculate_aoe_tiles(self, center: Vector2, pattern: str) -> list[Vector2]:
+    def _calculate_attack_range_vectorized(self, center: Vector2, min_range: int, max_range: int) -> VectorArray:
+        """Vectorized implementation of attack range calculation.
+        
+        Uses numpy meshgrid and broadcasting for efficient distance calculations
+        across the entire potential range area.
+        """
+        # Create coordinate arrays for the bounding box around the attack range
+        y_min = max(0, center.y - max_range)
+        y_max = min(self.height - 1, center.y + max_range)
+        x_min = max(0, center.x - max_range)
+        x_max = min(self.width - 1, center.x + max_range)
+        
+        # Create meshgrid for all positions in the bounding box
+        y_coords, x_coords = np.mgrid[y_min:y_max+1, x_min:x_max+1]
+        
+        # Calculate Manhattan distances using broadcasting
+        distances = np.abs(y_coords - center.y) + np.abs(x_coords - center.x)
+        
+        # Create mask for positions within attack range
+        range_mask = (distances >= min_range) & (distances <= max_range)
+        
+        # Get valid positions
+        valid_y = y_coords[range_mask]
+        valid_x = x_coords[range_mask]
+        
+        if len(valid_y) == 0:
+            return VectorArray()
+        
+        # Stack coordinates and create VectorArray
+        positions = np.column_stack((valid_y, valid_x)).astype(np.int16)
+        return VectorArray(positions)
+    
+    def calculate_aoe_tiles(self, center: Vector2, pattern: str) -> VectorArray:
         """Calculate AOE affected tiles from center position, clipped to map bounds.
         
         Args:
@@ -249,33 +389,81 @@ class GameMap:
             pattern: AOE pattern type ("single", "cross", etc.)
             
         Returns:
-            List of tiles affected by the AOE pattern
+            VectorArray of tiles affected by the AOE pattern
         """
-        tiles = []
+        return self._calculate_aoe_tiles_vectorized(center, pattern)
+    
+    def _calculate_aoe_tiles_vectorized(self, center: Vector2, pattern: str) -> VectorArray:
+        """Vectorized implementation of AOE pattern generation.
         
-        if pattern == "cross":
-            # Cross pattern: center plus 1 Manhattan distance
-            candidates = [
-                center,                                      # Center
-                Vector2(center.y, center.x + 1),           # Right
-                Vector2(center.y, center.x - 1),           # Left
-                Vector2(center.y + 1, center.x),           # Down
-                Vector2(center.y - 1, center.x),           # Up
-            ]
-            
-            # Clip to map boundaries
-            for pos in candidates:
-                if self.is_valid_position(pos):
-                    tiles.append(pos)
-                    
-        elif pattern == "single":
-            # Single target only
+        Uses numpy arrays for efficient pattern generation and bounds checking.
+        """
+        if pattern == "single":
             if self.is_valid_position(center):
-                tiles.append(center)
+                return VectorArray([center])
+            else:
+                return VectorArray()
         
-        # Future patterns can be added here (square, line, etc.)
+        elif pattern == "cross":
+            # Cross pattern: center plus 4 cardinal directions
+            offsets = np.array([
+                [0, 0],   # Center
+                [0, 1],   # Right
+                [0, -1],  # Left
+                [1, 0],   # Down
+                [-1, 0],  # Up
+            ], dtype=np.int8)  # Small offset values
+            
+        elif pattern == "square":
+            # 3x3 square pattern
+            offsets = np.array([
+                [-1, -1], [-1, 0], [-1, 1],
+                [0, -1],  [0, 0],  [0, 1],
+                [1, -1],  [1, 0],  [1, 1]
+            ], dtype=np.int8)
+            
+        elif pattern == "diamond":
+            # Diamond pattern (Manhattan distance <= 2)
+            offsets = np.array([
+                [0, 0],                    # Center
+                [-1, 0], [1, 0], [0, -1], [0, 1],  # Distance 1
+                [-2, 0], [2, 0], [0, -2], [0, 2],  # Distance 2
+                [-1, -1], [-1, 1], [1, -1], [1, 1] # Distance 2 diagonals
+            ], dtype=np.int8)
+            
+        elif pattern == "line_horizontal":
+            # 5-tile horizontal line
+            offsets = np.array([
+                [0, -2], [0, -1], [0, 0], [0, 1], [0, 2]
+            ], dtype=np.int8)
+            
+        elif pattern == "line_vertical":
+            # 5-tile vertical line
+            offsets = np.array([
+                [-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0]
+            ], dtype=np.int8)
+            
+        else:
+            # Unknown pattern, default to single
+            if self.is_valid_position(center):
+                return VectorArray([center])
+            else:
+                return VectorArray()
         
-        return tiles
+        # Calculate absolute positions
+        center_array = np.array([center.y, center.x], dtype=np.int16)
+        positions = center_array + offsets
+        
+        # Filter positions within map bounds using vectorized operations
+        valid_mask = ((positions[:, 0] >= 0) & (positions[:, 0] < self.height) &
+                     (positions[:, 1] >= 0) & (positions[:, 1] < self.width))
+        
+        valid_positions = positions[valid_mask].astype(np.int16)
+        
+        if len(valid_positions) == 0:
+            return VectorArray()
+        
+        return VectorArray(valid_positions)
     
     def calculate_threat_range(self, team: Team) -> set[Vector2]:
         threat_range = set()

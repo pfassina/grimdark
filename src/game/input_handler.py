@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from ..core.game_enums import Team
 from ..core.game_state import BattlePhase
 from ..core.input import InputEvent, InputType, Key
-from ..core.data_structures import Vector2
+from ..core.data_structures import Vector2, VectorArray
 
 
 class InputHandler:
@@ -161,7 +161,7 @@ class InputHandler:
             self.state.original_unit_position = unit.position
             self.state.battle_phase = BattlePhase.UNIT_MOVING
             movement_range = self.game_map.calculate_movement_range(unit)
-            self.state.set_movement_range(list(movement_range))
+            self.state.set_movement_range(movement_range)
     
     def _handle_unit_movement_confirm(self, cursor_position: Vector2) -> None:
         """Handle confirmation during unit movement phase."""
@@ -175,7 +175,7 @@ class InputHandler:
                     unit.has_moved = True
                     
                     # Clear movement range and transition to action menu
-                    self.state.movement_range.clear()
+                    self.state.movement_range = VectorArray()
                     self.state.battle_phase = BattlePhase.ACTION_MENU
                     self._build_action_menu_for_unit(unit)
     
@@ -216,16 +216,16 @@ class InputHandler:
                 self.state.close_action_menu()
                 self.state.battle_phase = BattlePhase.UNIT_MOVING
                 movement_range = self.game_map.calculate_movement_range(unit)
-                self.state.set_movement_range(list(movement_range))
+                self.state.set_movement_range(movement_range)
             else:
                 # Unit has already moved - restore to original position
                 self._restore_unit_to_original_position(unit)
     
     def _handle_targeting_cancel(self) -> None:
         """Handle cancel during targeting phase."""
-        self.state.attack_range.clear()
+        self.state.attack_range = VectorArray()
         self.state.selected_target = None
-        self.state.aoe_tiles.clear()
+        self.state.aoe_tiles = VectorArray()
         self.state.battle_phase = BattlePhase.ACTION_MENU
         if self.state.selected_unit_id:
             unit = self.game_map.get_unit(self.state.selected_unit_id)
@@ -255,7 +255,7 @@ class InputHandler:
             self.state.close_action_menu()
             self.state.battle_phase = BattlePhase.UNIT_MOVING
             movement_range = self.game_map.calculate_movement_range(unit)
-            self.state.set_movement_range(list(movement_range))
+            self.state.set_movement_range(movement_range)
             
             # Position cursor on the restored unit
             self.state.cursor_position = unit.position
@@ -400,7 +400,7 @@ class InputHandler:
             self.combat_manager.setup_attack_targeting(unit)
         elif self.state.battle_phase == BattlePhase.UNIT_MOVING:
             # Unit is in movement, skip to attack
-            self.state.movement_range.clear()
+            self.state.movement_range = VectorArray()
             self.state.battle_phase = BattlePhase.UNIT_ACTING
             self.combat_manager.setup_attack_targeting(unit)
         elif self.state.battle_phase == BattlePhase.ACTION_MENU:
@@ -434,7 +434,7 @@ class InputHandler:
                     self.state.close_action_menu()
                     self.state.battle_phase = BattlePhase.UNIT_MOVING
                     movement_range = self.game_map.calculate_movement_range(unit)
-                    self.state.set_movement_range(list(movement_range))
+                    self.state.set_movement_range(movement_range)
         
         elif action == "Attack":
             # Go to attack targeting

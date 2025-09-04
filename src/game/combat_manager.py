@@ -6,7 +6,7 @@ combat resolution and the game state.
 """
 from typing import TYPE_CHECKING, Optional, Callable
 
-from ..core.data_structures import Vector2
+from ..core.data_structures import Vector2, VectorArray
 
 if TYPE_CHECKING:
     from .map import GameMap
@@ -35,9 +35,9 @@ class CombatManager:
     def setup_attack_targeting(self, unit: "Unit") -> None:
         """Set up attack targeting for a unit."""
         # Clear movement range and set attack range
-        self.state.movement_range.clear()
+        self.state.movement_range = VectorArray()
         attack_range = self.game_map.calculate_attack_range(unit)
-        self.state.set_attack_range(list(attack_range))
+        self.state.set_attack_range(attack_range)
         
         # Set up targetable enemies for cycling
         self.refresh_targetable_enemies(unit)
@@ -68,10 +68,10 @@ class CombatManager:
                         cursor_pos, aoe_pattern
                     )
                 else:
-                    self.state.aoe_tiles = [cursor_pos]
+                    self.state.aoe_tiles = VectorArray([cursor_pos])
         else:
             self.state.selected_target = None
-            self.state.aoe_tiles.clear()
+            self.state.aoe_tiles = VectorArray()
     
     def execute_attack_at_cursor(self) -> bool:
         """
@@ -272,8 +272,8 @@ class CombatManager:
         
     def clear_attack_state(self) -> None:
         """Clear all attack-related state data."""
-        self.state.attack_range.clear()
-        self.state.aoe_tiles.clear()
+        self.state.attack_range = VectorArray()
+        self.state.aoe_tiles = VectorArray()
         self.state.targetable_enemies.clear()
         self.state.current_target_index = 0
         self.state.selected_target = None

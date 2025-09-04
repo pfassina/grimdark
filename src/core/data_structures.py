@@ -11,9 +11,11 @@ Each structure serves a specific architectural layer and should not be merged.
 """
 
 from dataclasses import dataclass
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Union
 from abc import ABC
 import math
+import numpy as np
+from numpy.typing import NDArray
 
 from .game_enums import Team, UnitClass
 
@@ -118,9 +120,173 @@ class Vector2:
         """Convert to coordinate tuple (y, x order)."""
         return (self.y, self.x)
     
-    def to_list(self) -> list[int]:
-        """Convert to coordinate list (y, x order)."""
-        return [self.y, self.x]
+    def to_numpy(self) -> NDArray[np.int16]:
+        """Convert to numpy array (y, x order). Uses int16 for memory efficiency."""
+        return np.array([self.y, self.x], dtype=np.int16)
+    
+    @classmethod
+    def from_numpy(cls, arr: NDArray[np.int16]) -> "Vector2":
+        """Create Vector2 from numpy array (y, x order)."""
+        if arr.shape != (2,):
+            raise ValueError("Array must have shape (2,) for Vector2 conversion")
+        return cls(int(arr[0]), int(arr[1]))
+
+
+class VectorArray:
+    """Efficient collection of Vector2 objects using numpy arrays for batch operations.
+    
+    Provides numpy-accelerated operations on collections of 2D positions while 
+    maintaining compatibility with Vector2 objects. Ideal for spatial queries,
+    range calculations, and batch transformations.
+    """
+    
+    def __init__(self, vectors: Optional[Union[list[Vector2], NDArray[np.int16]]] = None):
+        """Initialize VectorArray from list of Vector2 objects or numpy array.
+        
+        Args:
+            vectors: List of Vector2 objects or numpy array of shape (N, 2).
+                    If None, creates an empty VectorArray.
+        """
+        if vectors is None:
+            self._data = np.empty((0, 2), dtype=np.int16)
+        elif isinstance(vectors, list):
+            if not vectors:
+                self._data = np.empty((0, 2), dtype=np.int16)
+            else:
+                self._data = np.array([[v.y, v.x] for v in vectors], dtype=np.int16)
+        else:
+            if vectors.shape[-1] != 2:
+                raise ValueError("Numpy array must have shape (N, 2)")
+            self._data = vectors.astype(np.int16)
+    
+    @property
+    def data(self) -> NDArray[np.int16]:
+        """Get the underlying numpy array (N, 2) shape."""
+        return self._data
+    
+    @property
+    def y_coords(self) -> NDArray[np.int16]:
+        """Get all y coordinates."""
+        return self._data[:, 0]
+    
+    @property 
+    def x_coords(self) -> NDArray[np.int16]:
+        """Get all x coordinates."""
+        return self._data[:, 1]
+    
+    def __len__(self) -> int:
+        """Get number of vectors."""
+        return len(self._data)
+    
+    def __getitem__(self, index: int) -> Vector2:
+        """Get Vector2 at index."""
+        if index >= len(self._data) or index < -len(self._data):
+            raise IndexError("VectorArray index out of range")
+        row = self._data[index]
+        return Vector2(int(row[0]), int(row[1]))
+    
+    def __iter__(self):
+        """Make VectorArray iterable."""
+        for row in self._data:
+            yield Vector2(int(row[0]), int(row[1]))
+    
+    def to_vector_list(self) -> list[Vector2]:
+        """Convert to list of Vector2 objects."""
+        return [Vector2(int(row[0]), int(row[1])) for row in self._data]
+    
+    def distance_to_point(self, target: Vector2) -> NDArray[np.float64]:
+        """Calculate Euclidean distances from all vectors to a target point.
+        
+        Args:
+            target: Target Vector2 position
+            
+        Returns:
+            Array of distances from each vector to target
+        """
+        target_arr = np.array([target.y, target.x], dtype=np.int16)
+        diff = self._data - target_arr
+        return np.sqrt(np.sum(diff**2, axis=1))
+    
+    def manhattan_distance_to_point(self, target: Vector2) -> NDArray[np.int16]:
+        """Calculate Manhattan distances from all vectors to a target point.
+        
+        Args:
+            target: Target Vector2 position
+            
+        Returns:
+            Array of Manhattan distances from each vector to target
+        """
+        target_arr = np.array([target.y, target.x], dtype=np.int16)
+        return np.sum(np.abs(self._data - target_arr), axis=1)
+    
+    def filter_by_distance(self, center: Vector2, min_dist: int, max_dist: int) -> "VectorArray":
+        """Filter vectors by Manhattan distance range from center.
+        
+        Args:
+            center: Center point for distance calculation
+            min_dist: Minimum distance (inclusive)
+            max_dist: Maximum distance (inclusive)
+            
+        Returns:
+            New VectorArray containing vectors within distance range
+        """
+        distances = self.manhattan_distance_to_point(center)
+        mask = (distances >= min_dist) & (distances <= max_dist)
+        return VectorArray(self._data[mask])
+    
+    def filter_by_bounds(self, min_y: int, max_y: int, min_x: int, max_x: int) -> "VectorArray":
+        """Filter vectors by rectangular bounds.
+        
+        Args:
+            min_y, max_y: Y coordinate bounds (inclusive)
+            min_x, max_x: X coordinate bounds (inclusive)
+            
+        Returns:
+            New VectorArray containing vectors within bounds
+        """
+        mask = ((self._data[:, 0] >= min_y) & (self._data[:, 0] <= max_y) & 
+                (self._data[:, 1] >= min_x) & (self._data[:, 1] <= max_x))
+        return VectorArray(self._data[mask])
+    
+    def contains(self, vector: Vector2) -> bool:
+        """Check if array contains a specific vector.
+        
+        Args:
+            vector: Vector to search for
+            
+        Returns:
+            True if vector is in the array
+        """
+        target = np.array([vector.y, vector.x], dtype=np.int16)
+        return bool(np.any(np.all(self._data == target, axis=1)))
+    
+    def unique(self) -> "VectorArray":
+        """Remove duplicate vectors.
+        
+        Returns:
+            New VectorArray with unique vectors only
+        """
+        unique_data = np.unique(self._data, axis=0)
+        return VectorArray(unique_data)
+    
+    @classmethod
+    def from_ranges(cls, y_range: tuple[int, int], x_range: tuple[int, int]) -> "VectorArray":
+        """Create VectorArray from coordinate ranges.
+        
+        Args:
+            y_range: (min_y, max_y) inclusive range
+            x_range: (min_x, max_x) inclusive range
+            
+        Returns:
+            VectorArray containing all coordinate combinations in ranges
+        """
+        y_min, y_max = y_range
+        x_min, x_max = x_range
+        
+        y_coords, x_coords = np.mgrid[y_min:y_max+1, x_min:x_max+1]
+        positions = np.column_stack((y_coords.ravel(), x_coords.ravel()))
+        
+        return cls(positions)
 
 
 @dataclass

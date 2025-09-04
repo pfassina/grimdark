@@ -1,7 +1,7 @@
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional, Any
-from .data_structures import Vector2
+from .data_structures import Vector2, VectorArray
 
 
 class GamePhase(Enum):
@@ -55,12 +55,12 @@ class GameState:
     dialog_selection: int = 0             # For dialog option selection
     active_forecast: bool = False         # Battle forecast during targeting
     
-    movement_range: list[Vector2] = field(default_factory=list)
-    attack_range: list[Vector2] = field(default_factory=list)
+    movement_range: VectorArray = field(default_factory=VectorArray)
+    attack_range: VectorArray = field(default_factory=VectorArray)
     
     # Attack targeting state
     selected_target: Optional[Vector2] = None
-    aoe_tiles: list[Vector2] = field(default_factory=list)
+    aoe_tiles: VectorArray = field(default_factory=VectorArray)
     
     # Unit cycling state
     selectable_units: list[str] = field(default_factory=list)
@@ -76,10 +76,10 @@ class GameState:
         self.selected_unit_id = None
         self.selected_tile_position = None
         self.original_unit_position = None
-        self.movement_range.clear()
-        self.attack_range.clear()
+        self.movement_range = VectorArray()
+        self.attack_range = VectorArray()
         self.selected_target = None
-        self.aoe_tiles.clear()
+        self.aoe_tiles = VectorArray()
         self.selectable_units.clear()
         self.current_unit_index = 0
         self.targetable_enemies.clear()
@@ -99,17 +99,17 @@ class GameState:
         # move_cursor already handles both x and y above
     
     
-    def set_movement_range(self, tiles: list[Vector2]) -> None:
+    def set_movement_range(self, tiles: VectorArray) -> None:
         self.movement_range = tiles
     
-    def set_attack_range(self, tiles: list[Vector2]) -> None:
+    def set_attack_range(self, tiles: VectorArray) -> None:
         self.attack_range = tiles
     
     def is_in_movement_range(self, position: Vector2) -> bool:
-        return position in self.movement_range
+        return self.movement_range.contains(position)
     
     def is_in_attack_range(self, position: Vector2) -> bool:
-        return position in self.attack_range
+        return self.attack_range.contains(position)
     
     def start_player_turn(self) -> None:
         self.battle_phase = BattlePhase.PLAYER_TURN_START

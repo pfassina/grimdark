@@ -152,19 +152,48 @@ class RenderBuilder:
         return context
     
     def _add_tiles_to_context(self, context: RenderContext) -> None:
-        """Add tile data to the render context."""
-        for y in range(self.game_map.height):
-            for x in range(self.game_map.width):
-                position = Vector2(y, x)
-                tile = self.game_map.get_tile(position)
-                if tile:
-                    context.tiles.append(
-                        TileRenderData(
-                            position=position,
-                            terrain_type=tile.terrain_type.name.lower(),
-                            elevation=tile.elevation,
-                        )
-                    )
+        """Add tile data to the render context using vectorized operations."""
+        self._add_tiles_to_context_vectorized(context)
+    
+    def _add_tiles_to_context_vectorized(self, context: RenderContext) -> None:
+        """Vectorized implementation of tile data generation.
+        
+        Creates all tile render data at once using numpy operations
+        instead of nested loops for significant performance improvement.
+        """
+        import numpy as np
+        from ..core.game_enums import TerrainType
+        
+        # Get structured tile data from game map
+        terrain_types = self.game_map.tiles['terrain_type']
+        elevations = self.game_map.tiles['elevation']
+        height, width = self.game_map.height, self.game_map.width
+        
+        # Create coordinate meshgrid
+        y_coords, x_coords = np.mgrid[0:height, 0:width]
+        
+        # Flatten all arrays for vectorized processing
+        y_flat = y_coords.flatten()
+        x_flat = x_coords.flatten()
+        terrain_flat = terrain_types.flatten()
+        elevation_flat = elevations.flatten()
+        
+        # Convert terrain type integers to string names
+        terrain_names = np.empty(len(terrain_flat), dtype=object)
+        for terrain_type in TerrainType:
+            mask = terrain_flat == terrain_type.value
+            terrain_names[mask] = terrain_type.name.lower()
+        
+        # Create TileRenderData objects efficiently
+        for i in range(len(y_flat)):
+            position = Vector2(int(y_flat[i]), int(x_flat[i]))
+            context.tiles.append(
+                TileRenderData(
+                    position=position,
+                    terrain_type=terrain_names[i],
+                    elevation=int(elevation_flat[i]),
+                )
+            )
     
     def _add_movement_overlays(self, context: RenderContext) -> None:
         """Add movement range overlay tiles."""
@@ -183,7 +212,7 @@ class RenderBuilder:
         # Add all attack range tiles first
         for pos in self.state.attack_range:
             # Skip if this position will be handled as AOE or selected
-            if pos not in self.state.aoe_tiles and pos != self.state.selected_target:
+            if not self.state.aoe_tiles.contains(pos) and pos != self.state.selected_target:
                 context.attack_targets.append(
                     AttackTargetRenderData(
                         position=pos, target_type="range", blink_phase=blink_phase

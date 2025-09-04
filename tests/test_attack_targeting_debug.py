@@ -13,6 +13,7 @@ from src.game.map import GameMap  # noqa: E402
 from src.core.game_enums import UnitClass, Team  # noqa: E402
 from src.game.unit import Unit  # noqa: E402
 from src.core.game_state import GameState  # noqa: E402
+from src.core.data_structures import Vector2  # noqa: E402
 
 def main():
     print("Testing Attack Targeting with AOE")
@@ -67,35 +68,35 @@ def main():
     
     # Create game state and test the targeting
     state = GameState()
-    state.selected_unit_id = mage.unit_id
-    state.set_attack_range(list(attack_range))
+    state.battle.selected_unit_id = mage.unit_id
+    state.battle.set_attack_range(list(attack_range))
     
     # Simulate cursor movement
     print("\n" + "=" * 40)
     print("Simulating cursor movement:")
     
     # Move cursor to enemy position
-    state.cursor_x, state.cursor_y = 3, 2
+    state.cursor.set_position(Vector2(2, 3))
     print("\nCursor at (3, 2) - enemy position")
     
     # Check if we should show AOE
-    if (state.cursor_x, state.cursor_y) in state.attack_range:
-        state.selected_target = (state.cursor_x, state.cursor_y)
-        state.aoe_tiles = game_map.calculate_aoe_tiles((state.cursor_x, state.cursor_y), aoe_pattern)
-        print(f"  Selected target: {state.selected_target}")
-        print(f"  AOE tiles: {state.aoe_tiles}")
+    if state.cursor.position in state.battle.attack_range:
+        state.battle.selected_target = state.cursor.position
+        state.battle.aoe_tiles = game_map.calculate_aoe_tiles(state.cursor.position, aoe_pattern)
+        print(f"  Selected target: {state.battle.selected_target}")
+        print(f"  AOE tiles: {state.battle.aoe_tiles}")
     else:
         print("  Cursor not in attack range!")
     
     # Move cursor to empty position in range
-    state.cursor_x, state.cursor_y = 4, 2
+    state.cursor.set_position(Vector2(2, 4))
     print("\nCursor at (4, 2) - empty position in range")
     
-    if (state.cursor_x, state.cursor_y) in state.attack_range:
-        state.selected_target = (state.cursor_x, state.cursor_y)
-        state.aoe_tiles = game_map.calculate_aoe_tiles((state.cursor_x, state.cursor_y), aoe_pattern)
-        print(f"  Selected target: {state.selected_target}")
-        print(f"  AOE tiles: {state.aoe_tiles}")
+    if state.cursor.position in state.battle.attack_range:
+        state.battle.selected_target = state.cursor.position
+        state.battle.aoe_tiles = game_map.calculate_aoe_tiles(state.cursor.position, aoe_pattern)
+        print(f"  Selected target: {state.battle.selected_target}")
+        print(f"  AOE tiles: {state.battle.aoe_tiles}")
     else:
         print("  Cursor not in attack range!")
 

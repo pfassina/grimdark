@@ -108,9 +108,11 @@ The system uses a **push-based rendering architecture** where game logic and ren
    - `game_enums.py` - Centralized enums for teams, unit classes, terrain types
    - `data_structures.py` - Data conversion utilities and base structures
    - `game_info.py` - Game constants and lookup tables
+   - `game_view.py` - Read-only game state adapter for objectives system
+   - `events.py` - Game event definitions for objective tracking
 
 2. **Game Logic** (`src/game/`)
-   - `game.py` - Main game loop, turn management, state updates, objective checking
+   - `game.py` - **Main orchestrator** that coordinates all game systems
    - `map.py` - Grid-based battlefield, pathfinding, visibility, CSV map loading
    - `unit.py` - Character stats and properties
    - `tile.py` - Terrain types and effects
@@ -120,7 +122,21 @@ The system uses a **push-based rendering architecture** where game logic and ren
    - `unit_templates.py` - Unit class definitions and stat templates
    - `scenario_menu.py` - Scenario selection and management
 
-3. **Renderers** (`src/renderers/`)
+3. **Game Manager Systems** (`src/game/`)
+   - `input_handler.py` - All user input processing and routing
+   - `combat_manager.py` - Combat targeting, validation, and UI integration
+   - `combat_resolver.py` - Actual combat execution and damage application
+   - `battle_calculator.py` - Damage prediction and forecasting
+   - `turn_manager.py` - Turn flow and team management
+   - `ui_manager.py` - Overlays, dialogs, banners, and modal UI
+   - `render_builder.py` - Render context construction from game state
+
+4. **Objective System** (`src/game/`)
+   - `objectives.py` - Victory/defeat condition implementations
+   - `objective_manager.py` - Event-driven objective tracking
+   - `components.py` - Game component definitions for ECS-like patterns
+
+5. **Renderers** (`src/renderers/`)
    - Each renderer independently decides HOW to display the render context
    - Terminal renderer uses ASCII characters
    - New renderers (pygame, web, etc.) can be added without touching game code
@@ -133,6 +149,55 @@ The system uses a **push-based rendering architecture** where game logic and ren
 - **Input abstraction** - Renderers convert their input to generic `InputEvent` objects
 - **Renderer-owned visuals** - Each renderer owns its display logic (colors, symbols, sprites)
 - **Centralized gameplay data** - Terrain properties and gameplay rules in `assets/tileset.yaml`
+- **Manager-based architecture** - Specialized manager classes handle distinct responsibilities
+- **Dependency injection** - Managers receive dependencies through constructors for testability
+- **Event-driven design** - Game events flow through the objective system for loose coupling
+
+## Refactored Architecture (2024 Update)
+
+The codebase has been **extensively refactored** from a monolithic design into a clean manager-based architecture:
+
+### Before Refactoring
+- **game.py**: Monolithic code with mixed responsibilities
+- Difficult to maintain, test, and extend
+- All concerns (input, combat, UI, rendering) intertwined in one class
+
+### After Refactoring  
+- **game.py**: Focused purely on orchestration
+- **6 specialized managers**: Each handling distinct responsibilities
+- **Significant reduction** in main game file complexity
+- **Clear separation of concerns** with well-defined boundaries
+
+### Manager System Design
+
+The `Game` class now acts as a **coordinator** that:
+1. **Initializes** all manager systems with proper dependencies
+2. **Coordinates** communication between managers through callbacks
+3. **Orchestrates** the main game loop and high-level state management
+4. **Delegates** all specific concerns to appropriate managers
+
+### Manager Dependencies Flow
+```
+Game (Orchestrator)
+├── UIManager (overlays, dialogs, banners)
+├── InputHandler (user input → game actions)
+│   ├── → CombatManager (combat coordination)  
+│   └── → UIManager (show/hide overlays)
+├── CombatManager (combat orchestration)
+│   ├── → CombatResolver (damage application)
+│   └── → BattleCalculator (damage prediction)
+├── TurnManager (turn flow, team switching)
+├── RenderBuilder (game state → render context)
+└── All managers → GameState (shared state)
+```
+
+### Key Architectural Benefits
+1. **Single Responsibility**: Each manager handles exactly one major concern
+2. **Testability**: Managers can be unit tested in isolation
+3. **Maintainability**: Easy to locate and modify specific functionality
+4. **Extensibility**: New managers can be added without touching existing code
+5. **Collaboration**: Multiple developers can work on different systems simultaneously
+6. **Code Reuse**: Managers can potentially be reused in different contexts
 
 ## Asset System - Scenario-First Design
 
@@ -175,17 +240,36 @@ The game uses a **scenario-first asset system** where scenarios are the single s
 
 ## Adding Features
 
-When adding new game features:
-1. Update game logic in `src/game/`
-2. Add necessary data to render context in `src/core/renderable.py`
-3. Update renderers to display the new data
+### New Game Features
+When adding new game features, work through the manager system:
+1. **Game Logic**: Update appropriate manager or create new specialized manager in `src/game/`
+2. **Render Data**: Add necessary data to render context in `src/core/renderable.py`  
+3. **Rendering**: Update renderers to display the new data
+4. **Integration**: Wire new managers into main `Game` class orchestration
+5. **Events**: Add game events if needed for objective system integration
 
+### New Managers
+When creating new manager systems:
+1. **Single Responsibility**: Each manager handles one major concern (input, combat, UI, etc.)
+2. **Dependency Injection**: Receive dependencies through constructor parameters
+3. **Callback Pattern**: Use optional callbacks for coordination with main Game class
+4. **Clear Interfaces**: Define clean boundaries between managers
+5. **Testability**: Design for unit testing in isolation
+
+### Combat System Extensions
+The combat system has distinct separation of concerns:
+- **`battle_calculator.py`** - Damage prediction (read-only, no state changes)
+- **`combat_resolver.py`** - Actual combat execution (applies damage, removes units)
+- **`combat_manager.py`** - UI integration and orchestration between the two
+
+### New Renderer
 When adding a new renderer:
 1. Inherit from `Renderer` base class
 2. Implement required methods: `initialize()`, `render_frame()`, `get_input_events()`, `cleanup()`
 3. Register it in main entry point
+4. All visual decisions (colors, symbols, sprites) belong in the renderer
 
-When creating new scenarios (single-file authoring):
+### New Scenarios (Single-file Authoring)
 1. Create YAML files in `assets/scenarios/` directory
 2. Reference external CSV map directories with `map: { source: assets/maps/mapname }`
 3. Define `units:` section with unit roster (classes, teams, stat overrides)
@@ -200,7 +284,7 @@ When creating new scenarios (single-file authoring):
 9. Configure `settings:` (turn limits, fog of war, etc.)
 10. Add `map_overrides:` if environmental changes needed (bridges, gates, etc.)
 
-When creating new maps (geometry only):
+### New Maps (Geometry Only)
 1. Create directories in `assets/maps/` with CSV layers
 2. Required: `ground.csv` with terrain tile IDs
 3. Optional: `walls.csv`, `features.csv` for additional terrain layers

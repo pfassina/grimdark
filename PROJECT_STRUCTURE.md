@@ -15,12 +15,24 @@ grimdark/
 │   │   ├── tileset_loader.py # Tileset configuration loader
 │   │   ├── game_enums.py  # Centralized enums
 │   │   ├── data_structures.py # Data conversion utilities
-│   │   └── game_info.py   # Game constants
-│   ├── game/              # Game logic
-│   │   ├── game.py        # Main game loop and objective checking
+│   │   ├── game_info.py   # Game constants
+│   │   ├── game_view.py   # Read-only game state adapter
+│   │   └── events.py      # Game event definitions
+│   ├── game/              # Game logic and managers
+│   │   ├── game.py        # Main orchestrator
+│   │   ├── input_handler.py    # User input processing
+│   │   ├── combat_manager.py   # Combat coordination
+│   │   ├── combat_resolver.py  # Combat execution
+│   │   ├── battle_calculator.py # Damage prediction
+│   │   ├── turn_manager.py     # Turn flow management
+│   │   ├── ui_manager.py       # UI overlays and dialogs
+│   │   ├── render_builder.py   # Render context building
 │   │   ├── map.py         # Grid-based battlefield and CSV map loading
 │   │   ├── scenario.py    # Scenario definitions and objectives
 │   │   ├── scenario_loader.py # YAML scenario parsing
+│   │   ├── objectives.py  # Victory/defeat condition implementations
+│   │   ├── objective_manager.py # Event-driven objective tracking
+│   │   ├── components.py  # Game component definitions
 │   │   ├── map_objects.py # Map objects and spawn points
 │   │   ├── unit_templates.py # Unit class definitions
 │   │   ├── scenario_menu.py # Scenario selection
@@ -77,6 +89,23 @@ grimdark/
 - **`README.md`** - Complete project documentation
 - **`CLAUDE.md`** - Development commands and guidance
 
+## Architecture Notes
+
+### Manager-Based Design (2024 Refactor)
+The `src/game/` directory now follows a **manager-based architecture**:
+- **game.py** - Main orchestrator that coordinates all systems
+- **6 specialized managers** - Each handles one major responsibility
+- **Significant reduction** in main game file complexity
+- **Clean separation**: Input, combat, UI, turns, rendering all isolated
+
+### Manager Responsibilities
+- **InputHandler** - All user input processing and routing
+- **CombatManager** - Combat targeting and UI integration  
+- **CombatResolver** - Actual damage application and unit removal
+- **TurnManager** - Turn flow and team management
+- **UIManager** - Overlays, dialogs, banners
+- **RenderBuilder** - Converts game state to render contexts
+
 ## Benefits of This Structure
 
 ✓ **Clean Root**: Only essential files in project root  
@@ -84,4 +113,6 @@ grimdark/
 ✓ **Easy Navigation**: Clear purpose for each directory  
 ✓ **Scalable**: Easy to add new demos/tests without cluttering  
 ✓ **Professional**: Industry-standard project layout  
-✓ **Clear Separation**: Source code vs demos vs tests vs content
+✓ **Clear Separation**: Source code vs demos vs tests vs content  
+✓ **Manager Architecture**: Single responsibility principle with clean interfaces  
+✓ **Maintainable**: Easy to locate and modify specific functionality

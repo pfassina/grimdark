@@ -18,11 +18,15 @@ The system uses a **push-based, data-driven rendering architecture** where:
 - **`input.py`**: Generic input event system
 - **`game_state.py`**: Centralized game state management
 
-### Game Logic (`src/game/`)
-- **`tile.py`**: Terrain types and properties
-- **`unit.py`**: Character/unit data and stats
+### Game Logic (`src/game/`) - Manager-Based Architecture
+- **`game.py`**: Main orchestrator coordinating all game systems
+- **`input_handler.py`**: All user input processing and routing
+- **`combat_manager.py`**: Combat targeting and UI integration
+- **`combat_resolver.py`**: Actual combat execution and damage
+- **`turn_manager.py`**: Turn flow and team management
+- **`ui_manager.py`**: Overlays, dialogs, and banners
+- **`render_builder.py`**: Converts game state to render contexts
 - **`map.py`**: Grid-based battlefield with pathfinding, CSV map loading
-- **`game.py`**: Main game loop, turn management, and objective checking
 - **`scenario.py`**: Scenario definitions and victory/defeat objectives
 - **`scenario_loader.py`**: YAML scenario loading and parsing
 

@@ -261,7 +261,7 @@ class Game:
                 
                 # Transition to battle phase
                 self.state.phase = GamePhase.BATTLE
-                self.state.battle_phase = BattlePhase.UNIT_SELECTION
+                self.state.battle.phase = BattlePhase.UNIT_SELECTION
                 
                 # Initialize selectable units
                 self._refresh_selectable_units()
@@ -357,41 +357,41 @@ class Game:
         selectable_ids = [
             unit.unit_id for unit in player_units if unit.can_move or unit.can_act
         ]
-        self.state.set_selectable_units(selectable_ids)
+        self.state.battle.set_selectable_units(selectable_ids)
     
     def _position_cursor_on_first_player_unit(self) -> None:
         """Position the cursor on the first available player unit."""
         if not self.game_map:
             # Fallback to default position
-            self.state.cursor_position = Vector2(2, 2)
+            self.state.cursor.set_position(Vector2(2, 2))
             return
         
         player_units = self.game_map.get_units_by_team(Team.PLAYER)
         if player_units:
             # Position cursor on first player unit
             first_unit = player_units[0]
-            self.state.cursor_position = first_unit.position
+            self.state.cursor.set_position(first_unit.position)
         else:
             # Fallback to default position if no player units found
-            self.state.cursor_position = Vector2(2, 2)
+            self.state.cursor.set_position(Vector2(2, 2))
     
     def _position_cursor_on_next_player_unit(self) -> None:
         """Position cursor on the next available player unit after completing an action."""
         if not self.game_map:
             return
         
-        if not self.state.selectable_units:
+        if not self.state.battle.selectable_units:
             # No selectable units, try to position on any player unit
             player_units = self.game_map.get_units_by_team(Team.PLAYER)
             if player_units:
                 # Position on first available player unit
                 next_unit = player_units[0]
-                self.state.cursor_position = next_unit.position
+                self.state.cursor.set_position(next_unit.position)
             return
         
         # Find a different unit than the one currently at cursor position
         current_unit_at_cursor = self.game_map.get_unit_at(
-            self.state.cursor_position
+            self.state.cursor.position
         )
         current_unit_id = (
             current_unit_at_cursor.unit_id if current_unit_at_cursor else None
@@ -400,12 +400,12 @@ class Game:
         # Look for the next selectable unit that's different from current
         next_unit_id = None
         attempts = 0
-        max_attempts = len(self.state.selectable_units)
+        max_attempts = len(self.state.battle.selectable_units)
         
         while attempts < max_attempts:
-            candidate_id = self.state.get_current_selectable_unit()
+            candidate_id = self.state.battle.get_current_selectable_unit()
             if not candidate_id:
-                candidate_id = self.state.cycle_selectable_units()
+                candidate_id = self.state.battle.cycle_selectable_units()
             
             # If this unit is different from current, use it
             if candidate_id and candidate_id != current_unit_id:
@@ -413,18 +413,18 @@ class Game:
                 break
             
             # Otherwise cycle to next unit
-            self.state.cycle_selectable_units()
+            self.state.battle.cycle_selectable_units()
             attempts += 1
         
         # If we couldn't find a different unit, just use current selectable unit
         if not next_unit_id:
-            next_unit_id = self.state.get_current_selectable_unit()
+            next_unit_id = self.state.battle.get_current_selectable_unit()
         
         # Position cursor on the selected unit
         if next_unit_id:
             next_unit = self.game_map.get_unit(next_unit_id)
             if next_unit:
-                self.state.cursor_position = next_unit.position
+                self.state.cursor.set_position(next_unit.position)
     
     def _initialize_objective_system(self) -> None:
         """Initialize the event-driven objective system for the current scenario."""
@@ -452,7 +452,7 @@ class Game:
     ) -> None:
         """Emit a unit moved event."""
         event = UnitMoved(
-            turn=self.state.current_turn,
+            turn=self.state.battle.current_turn,
             unit_name=unit_name,
             team=team,
             from_position=from_pos,

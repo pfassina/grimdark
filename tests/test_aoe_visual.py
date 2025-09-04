@@ -68,24 +68,24 @@ def main():
     # Create game state in attack mode
     state = GameState()
     state.phase = GamePhase.BATTLE
-    state.battle_phase = BattlePhase.TARGETING
-    state.selected_unit_id = mage.unit_id
-    state.cursor_x, state.cursor_y = 3, 2  # Position that will hit both enemy1 and enemy3 in cross AOE
+    state.battle.phase = BattlePhase.TARGETING
+    state.battle.selected_unit_id = mage.unit_id
+    state.cursor.set_position(Vector2(2, 3))  # y,x
     
     # Calculate attack range
     attack_range = game_map.calculate_attack_range(mage)
-    state.set_attack_range(list(attack_range))
+    state.battle.set_attack_range(list(attack_range))
     
     # Set selected target and AOE tiles
-    state.selected_target = (state.cursor_x, state.cursor_y)
-    state.aoe_tiles = game_map.calculate_aoe_tiles(state.selected_target, mage.combat.aoe_pattern)
+    state.battle.selected_target = state.cursor.position
+    state.battle.aoe_tiles = game_map.calculate_aoe_tiles(state.battle.selected_target, mage.combat.aoe_pattern)
     
     print(f"Mage at ({mage.x}, {mage.y})")
     print(f"Attack range: {sorted(attack_range)}")
-    print(f"Cursor at ({state.cursor_x}, {state.cursor_y})")
-    print(f"Selected target: {state.selected_target}")
+    print(f"Cursor at ({state.cursor.position.x}, {state.cursor.position.y})")
+    print(f"Selected target: {state.battle.selected_target}")
     print(f"AOE pattern: {mage.combat.aoe_pattern}")
-    print(f"AOE tiles: {sorted(state.aoe_tiles)}")
+    print(f"AOE tiles: {sorted(state.battle.aoe_tiles)}")
     print()
     
     # Create simple renderer for display

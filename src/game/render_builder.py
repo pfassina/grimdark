@@ -68,10 +68,10 @@ class RenderBuilder:
         
         # Update camera to follow cursor
         self.state.update_camera_to_cursor(screen_width, viewport_height)
-        
+
         # Set viewport information
-        context.viewport_x = self.state.camera_position.x
-        context.viewport_y = self.state.camera_position.y
+        context.viewport_x = self.state.cursor.camera_position.x
+        context.viewport_y = self.state.cursor.camera_position.y
         context.viewport_width = screen_width
         context.viewport_height = viewport_height
         
@@ -79,8 +79,8 @@ class RenderBuilder:
         context.world_height = self.game_map.height
         
         # Add game state information
-        context.current_turn = self.state.current_turn
-        context.current_team = self.state.current_team
+        context.current_turn = self.state.battle.current_turn
+        context.current_team = self.state.battle.current_team
         
         # Set timing for animations (convert to milliseconds)
         context.current_time_ms = int((time.time() - self.game_start_time) * 1000)
@@ -197,7 +197,7 @@ class RenderBuilder:
     
     def _add_movement_overlays(self, context: RenderContext) -> None:
         """Add movement range overlay tiles."""
-        for pos in self.state.movement_range:
+        for pos in self.state.battle.movement_range:
             context.overlays.append(
                 OverlayTileRenderData(
                     position=pos, overlay_type="movement", opacity=0.5
@@ -210,18 +210,18 @@ class RenderBuilder:
         blink_phase = (context.current_time_ms // 500) % 2 == 1
         
         # Add all attack range tiles first
-        for pos in self.state.attack_range:
+        for pos in self.state.battle.attack_range:
             # Skip if this position will be handled as AOE or selected
-            if not self.state.aoe_tiles.contains(pos) and pos != self.state.selected_target:
+            if not self.state.battle.aoe_tiles.contains(pos) and pos != self.state.battle.selected_target:
                 context.attack_targets.append(
                     AttackTargetRenderData(
                         position=pos, target_type="range", blink_phase=blink_phase
                     )
                 )
-        
+
         # Add AOE tiles (including those outside attack range)
-        for pos in self.state.aoe_tiles:
-            if pos == self.state.selected_target:
+        for pos in self.state.battle.aoe_tiles:
+            if pos == self.state.battle.selected_target:
                 # Selected tile gets special treatment
                 context.attack_targets.append(
                     AttackTargetRenderData(
@@ -245,9 +245,9 @@ class RenderBuilder:
             from ..core.game_state import BattlePhase
             
             if (
-                self.state.battle_phase == BattlePhase.UNIT_ACTING
-                and self.state.targetable_enemies
-                and unit.unit_id in self.state.targetable_enemies
+                self.state.battle.phase == BattlePhase.UNIT_ACTING
+                and self.state.battle.targetable_enemies
+                and unit.unit_id in self.state.battle.targetable_enemies
             ):
                 return "target"
             return None
@@ -259,20 +259,20 @@ class RenderBuilder:
     def _add_cursor_to_context(self, context: RenderContext) -> None:
         """Add cursor to the render context."""
         # Always set cursor position (for panels to read)
-        context.cursor_x = self.state.cursor_position.x
-        context.cursor_y = self.state.cursor_position.y
+        context.cursor_x = self.state.cursor.position.x
+        context.cursor_y = self.state.cursor.position.y
         
         # Add cursor with blinking effect (only visible when blinking on)
         if self._is_cursor_visible():
             context.cursor = CursorRenderData(
-                position=self.state.cursor_position, cursor_type="default"
+                position=self.state.cursor.position, cursor_type="default"
             )
     
     def _add_action_menu(
         self, context: RenderContext, screen_width: int, _screen_height: int
     ) -> None:
         """Add action menu if active."""
-        if not self.state.is_action_menu_open():
+        if not self.state.ui.is_action_menu_open():
             return
         
         # Position the action menu in the sidebar area
@@ -283,7 +283,7 @@ class RenderBuilder:
         # The sidebar renderer will calculate proper positioning based on actual panel heights
         menu_width = sidebar_width - 2
         menu_height = (
-            len(self.state.action_menu_items) + 3
+            len(self.state.ui.action_menu_items) + 3
         )  # +3 for title and borders
         
         # Set a placeholder position - sidebar renderer will reposition it properly
@@ -296,8 +296,8 @@ class RenderBuilder:
                 width=menu_width,
                 height=menu_height,
                 title="Actions",
-                items=self.state.action_menu_items,
-                selected_index=self.state.action_menu_selection,
+                items=self.state.ui.action_menu_items,
+                selected_index=self.state.ui.action_menu_selection,
             )
         )
     
@@ -305,9 +305,9 @@ class RenderBuilder:
         self, context: RenderContext, _screen_width: int, screen_height: int
     ) -> None:
         """Add status bar text."""
-        status_text = f"Turn {self.state.current_turn} | "
-        status_text += f"Phase: {self.state.battle_phase.name} | "
-        status_text += f"Cursor: ({self.state.cursor_position.x}, {self.state.cursor_position.y}) | "
+        status_text = f"Turn {self.state.battle.current_turn} | "
+        status_text += f"Phase: {self.state.battle.phase.name} | "
+        status_text += f"Cursor: ({self.state.cursor.position.x}, {self.state.cursor.position.y}) | "
         status_text += "[Q]uit [Z]Confirm [X]Cancel"
         
         context.texts.append(
@@ -320,20 +320,20 @@ class RenderBuilder:
             return
         
         # Add strategic TUI overlays if active
-        if self.state.is_overlay_open():
-            if self.state.active_overlay == "objectives":
+        if self.state.ui.is_overlay_open():
+            if self.state.ui.active_overlay == "objectives":
                 context.overlay = self.ui_manager.build_objectives_overlay()
-            elif self.state.active_overlay == "help":
+            elif self.state.ui.active_overlay == "help":
                 context.overlay = self.ui_manager.build_help_overlay()
-            elif self.state.active_overlay == "minimap":
+            elif self.state.ui.active_overlay == "minimap":
                 context.overlay = self.ui_manager.build_minimap_overlay()
         
         # Add dialog if active
-        if self.state.is_dialog_open() and self.state.active_dialog is not None:
-            context.dialog = self.ui_manager.build_dialog(self.state.active_dialog)
+        if self.state.ui.is_dialog_open() and self.state.ui.active_dialog is not None:
+            context.dialog = self.ui_manager.build_dialog(self.state.ui.active_dialog)
         
         # Add battle forecast if active
-        if self.state.is_forecast_active():
+        if self.state.ui.is_forecast_active():
             context.battle_forecast = self.ui_manager.build_battle_forecast()
         
         # Add banner if active

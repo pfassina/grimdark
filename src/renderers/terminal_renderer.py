@@ -343,7 +343,7 @@ class TerminalRenderer(Renderer):
         
         # Find terrain tile at cursor position
         for tile in context.tiles:
-            if tile.x == cursor_x and tile.y == cursor_y:
+            if tile.position.x == cursor_x and tile.position.y == cursor_y:
                 terrain_tile = tile
                 break
         
@@ -380,7 +380,7 @@ class TerminalRenderer(Renderer):
         unit = None
         
         for u in context.units:
-            if u.x == cursor_x and u.y == cursor_y:
+            if u.position.x == cursor_x and u.position.y == cursor_y:
                 unit = u
                 break
         
@@ -552,8 +552,8 @@ class TerminalRenderer(Renderer):
         vw = max_width if max_width else self.config.width
         vh = max_height if max_height else self.config.height - 3
         
-        screen_x = item.x - vx
-        screen_y = item.y - vy
+        screen_x = item.position.x - vx
+        screen_y = item.position.y - vy
         
         if 0 <= screen_x < vw and 0 <= screen_y < vh:
             if isinstance(item, TileRenderData):

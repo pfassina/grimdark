@@ -31,7 +31,7 @@ def main():
     print(f"Units placed: {len(game_map.units)}")
     
     for unit in game_map.units.values():
-        print(f"  - {unit.name} ({unit.actor.get_class_name()}) at ({unit.x}, {unit.y})")
+        print(f"  - {unit.name} ({unit.actor.get_class_name()}) at ({unit.position.x}, {unit.position.y})")
     
     # Create renderer and game
     config = RendererConfig(

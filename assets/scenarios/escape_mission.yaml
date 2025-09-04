@@ -15,7 +15,7 @@ _escape_patterns:
   objectives: &escape_objectives
     escape_success: &reach_escape
       type: reach_position
-      position: [5, 8]
+      position: [8, 5]
       unit_name: Escape Leader
       description: Get the Escape Leader to the marked position
       
@@ -45,7 +45,7 @@ units:
   - name: Escape Leader
     class: THIEF
     team: PLAYER
-    position: [5, 1]
+    position: [1, 5]
     stats_override:
       <<: *fast_escape
       
@@ -53,7 +53,7 @@ units:
   - name: Wounded Knight
     class: KNIGHT
     team: PLAYER
-    position: [6, 1]
+    position: [1, 6]
     stats_override:
       <<: *injured
 
@@ -67,18 +67,18 @@ units:
   - name: Prison Guard 2
     class: WARRIOR
     team: ENEMY
-    position: [8, 3]
+    position: [3, 8]
     
   # Patrol units blocking escape route
   - name: Patrol Archer 1
     class: ARCHER
     team: ENEMY
-    position: [2, 6]
+    position: [6, 2]
     
   - name: Patrol Archer 2
     class: ARCHER
     team: ENEMY
-    position: [9, 6]
+    position: [6, 9]
 
 # Victory and defeat conditions
 objectives:

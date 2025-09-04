@@ -6,6 +6,7 @@ import os
 
 from ..core.game_enums import TerrainType, Team
 from ..core.tileset_loader import get_tileset_config
+from ..core.data_structures import Vector2
 from .tile import Tile
 from .unit import Unit
 
@@ -21,7 +22,7 @@ class GameMap:
         self.tiles = np.empty((self.height, self.width), dtype=object)
         for y in range(self.height):
             for x in range(self.width):
-                self.tiles[y, x] = Tile(x, y, TerrainType.PLAIN)
+                self.tiles[y, x] = Tile(Vector2(y, x), TerrainType.PLAIN)
     
     @classmethod
     def from_csv_layers(cls, map_directory: str) -> "GameMap":
@@ -90,11 +91,11 @@ class GameMap:
                             # Default to plain terrain if tile ID not found
                             terrain_type = TerrainType.PLAIN
                         
-                        game_map.set_tile(x, y, terrain_type)
+                        game_map.set_tile(Vector2(y, x), terrain_type)
                     except (ValueError, IndexError, KeyError):
                         # Only set to plain if this is the ground layer
                         if override_empty:
-                            game_map.set_tile(x, y, TerrainType.PLAIN)
+                            game_map.set_tile(Vector2(y, x), TerrainType.PLAIN)
         
         # Process ground layer (required, fills all cells)
         process_layer(ground_data, override_empty=True)
@@ -117,26 +118,26 @@ class GameMap:
         
         return game_map
     
-    def get_tile(self, x: int, y: int) -> Optional[Tile]:
-        if self.is_valid_position(x, y):
-            return self.tiles[y, x]
+    def get_tile(self, position: Vector2) -> Optional[Tile]:
+        if self.is_valid_position(position):
+            return self.tiles[position.y, position.x]
         return None
     
-    def set_tile(self, x: int, y: int, terrain_type: TerrainType, elevation: int = 0):
-        if self.is_valid_position(x, y):
-            self.tiles[y, x] = Tile(x, y, terrain_type, elevation)
+    def set_tile(self, position: Vector2, terrain_type: TerrainType, elevation: int = 0):
+        if self.is_valid_position(position):
+            self.tiles[position.y, position.x] = Tile(position, terrain_type, elevation)
     
-    def is_valid_position(self, x: int, y: int) -> bool:
-        return 0 <= x < self.width and 0 <= y < self.height
+    def is_valid_position(self, position: Vector2) -> bool:
+        return 0 <= position.x < self.width and 0 <= position.y < self.height
     
     def add_unit(self, unit: Unit) -> bool:
-        if not self.is_valid_position(unit.x, unit.y):
+        if not self.is_valid_position(unit.position):
             return False
         
-        if self.get_unit_at(unit.x, unit.y):
+        if self.get_unit_at(unit.position):
             return False
         
-        tile = self.get_tile(unit.x, unit.y)
+        tile = self.get_tile(unit.position)
         if not tile or not tile.can_enter(unit):
             return False
         
@@ -149,81 +150,81 @@ class GameMap:
     def get_unit(self, unit_id: str) -> Optional[Unit]:
         return self.units.get(unit_id)
     
-    def get_unit_at(self, x: int, y: int) -> Optional[Unit]:
+    def get_unit_at(self, position: Vector2) -> Optional[Unit]:
         for unit in self.units.values():
-            if unit.x == x and unit.y == y and unit.is_alive:
+            if unit.position == position and unit.is_alive:
                 return unit
         return None
     
     def get_units_by_team(self, team: Team) -> list[Unit]:
         return [unit for unit in self.units.values() if unit.team == team and unit.is_alive]
     
-    def move_unit(self, unit_id: str, x: int, y: int) -> bool:
+    def move_unit(self, unit_id: str, position: Vector2) -> bool:
         unit = self.get_unit(unit_id)
         if not unit:
             return False
         
-        if not self.is_valid_position(x, y):
+        if not self.is_valid_position(position):
             return False
         
-        if self.get_unit_at(x, y):
+        if self.get_unit_at(position):
             return False
         
-        tile = self.get_tile(x, y)
+        tile = self.get_tile(position)
         if not tile or not tile.can_enter(unit):
             return False
         
-        unit.move_to(x, y)
+        unit.move_to(position)
         return True
     
-    def calculate_movement_range(self, unit: Unit) -> set[tuple[int, int]]:
+    def calculate_movement_range(self, unit: Unit) -> set[Vector2]:
         if not unit or not unit.can_move:
             return set()
         
         movement = unit.movement.movement_points
         visited = set()
         reachable = set()
-        frontier = [(unit.x, unit.y, movement)]
+        frontier = [(unit.position, movement)]
         
         while frontier:
-            x, y, remaining = frontier.pop(0)
+            pos, remaining = frontier.pop(0)
             
-            if (x, y) in visited:
+            if pos in visited:
                 continue
             
-            visited.add((x, y))
+            visited.add(pos)
             
-            if (x, y) != (unit.x, unit.y):
-                existing_unit = self.get_unit_at(x, y)
+            if pos != unit.position:
+                existing_unit = self.get_unit_at(pos)
                 if existing_unit and existing_unit.team != unit.team:
                     continue
             
-            reachable.add((x, y))
+            reachable.add(pos)
             
             for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                nx, ny = x + dx, y + dy
+                next_pos = Vector2(pos.y + dy, pos.x + dx)
                 
-                if not self.is_valid_position(nx, ny):
+                if not self.is_valid_position(next_pos):
                     continue
                 
-                tile = self.get_tile(nx, ny)
+                tile = self.get_tile(next_pos)
                 if not tile or tile.blocks_movement:
                     continue
                 
                 cost = tile.move_cost
                 if remaining >= cost:
-                    frontier.append((nx, ny, remaining - cost))
+                    frontier.append((next_pos, remaining - cost))
         
         return reachable
     
-    def calculate_attack_range(self, unit: Unit, from_position: Optional[tuple[int, int]] = None) -> set[tuple[int, int]]:
+    def calculate_attack_range(self, unit: Unit, from_position: Optional[Vector2] = None) -> set[Vector2]:
         if not unit or not unit.is_alive:
             return set()
         
         if from_position:
-            x, y = from_position
+            pos = from_position
         else:
-            x, y = unit.x, unit.y
+            pos = unit.position
         
         attack_range = set()
         min_range = unit.combat.attack_range_min
@@ -234,50 +235,49 @@ class GameMap:
                 distance = abs(dx) + abs(dy)
                 
                 if min_range <= distance <= max_range:
-                    nx, ny = x + dx, y + dy
-                    if self.is_valid_position(nx, ny):
-                        attack_range.add((nx, ny))
+                    target_pos = Vector2(pos.y + dy, pos.x + dx)
+                    if self.is_valid_position(target_pos):
+                        attack_range.add(target_pos)
         
         return attack_range
     
-    def calculate_aoe_tiles(self, center: tuple[int, int], pattern: str) -> list[tuple[int, int]]:
+    def calculate_aoe_tiles(self, center: Vector2, pattern: str) -> list[Vector2]:
         """Calculate AOE affected tiles from center position, clipped to map bounds.
         
         Args:
-            center: Center position (x, y) of the AOE
+            center: Center position vector of the AOE
             pattern: AOE pattern type ("single", "cross", etc.)
             
         Returns:
             List of tiles affected by the AOE pattern
         """
         tiles = []
-        x, y = center
         
         if pattern == "cross":
             # Cross pattern: center plus 1 Manhattan distance
             candidates = [
-                (x, y),      # Center
-                (x+1, y),    # Right
-                (x-1, y),    # Left
-                (x, y+1),    # Down
-                (x, y-1),    # Up
+                center,                                      # Center
+                Vector2(center.y, center.x + 1),           # Right
+                Vector2(center.y, center.x - 1),           # Left
+                Vector2(center.y + 1, center.x),           # Down
+                Vector2(center.y - 1, center.x),           # Up
             ]
             
             # Clip to map boundaries
-            for cx, cy in candidates:
-                if 0 <= cx < self.width and 0 <= cy < self.height:
-                    tiles.append((cx, cy))
+            for pos in candidates:
+                if self.is_valid_position(pos):
+                    tiles.append(pos)
                     
         elif pattern == "single":
             # Single target only
-            if 0 <= x < self.width and 0 <= y < self.height:
-                tiles.append((x, y))
+            if self.is_valid_position(center):
+                tiles.append(center)
         
         # Future patterns can be added here (square, line, etc.)
         
         return tiles
     
-    def calculate_threat_range(self, team: Team) -> set[tuple[int, int]]:
+    def calculate_threat_range(self, team: Team) -> set[Vector2]:
         threat_range = set()
         
         for unit in self.units.values():
@@ -286,7 +286,7 @@ class GameMap:
         
         return threat_range
     
-    def get_path(self, start: tuple[int, int], end: tuple[int, int], max_cost: int) -> Optional[list[tuple[int, int]]]:
+    def get_path(self, start: Vector2, end: Vector2, max_cost: int) -> Optional[list[Vector2]]:
         if start == end:
             return [start]
         
@@ -296,15 +296,15 @@ class GameMap:
         visited = {start: 0}
         
         while queue:
-            (x, y), cost, path = queue.popleft()
+            pos, cost, path = queue.popleft()
             
             for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                nx, ny = x + dx, y + dy
+                next_pos = Vector2(pos.y + dy, pos.x + dx)
                 
-                if not self.is_valid_position(nx, ny):
+                if not self.is_valid_position(next_pos):
                     continue
                 
-                tile = self.get_tile(nx, ny)
+                tile = self.get_tile(next_pos)
                 if not tile or tile.blocks_movement:
                     continue
                 
@@ -313,12 +313,12 @@ class GameMap:
                 if new_cost > max_cost:
                     continue
                 
-                if (nx, ny) == end:
-                    return path + [(nx, ny)]
+                if next_pos == end:
+                    return path + [next_pos]
                 
-                if (nx, ny) not in visited or visited[(nx, ny)] > new_cost:
-                    visited[(nx, ny)] = new_cost
-                    queue.append(((nx, ny), new_cost, path + [(nx, ny)]))
+                if next_pos not in visited or visited[next_pos] > new_cost:
+                    visited[next_pos] = new_cost
+                    queue.append((next_pos, new_cost, path + [next_pos]))
         
         return None
     

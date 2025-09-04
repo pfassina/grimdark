@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from ..core.components import Component
 from ..core.game_enums import UnitClass, Team, UNIT_CLASS_NAMES
 from ..core.game_info import UNIT_CLASS_DATA
+from ..core.data_structures import Vector2
 
 if TYPE_CHECKING:
     from ..core.components import Entity
@@ -167,18 +168,16 @@ class MovementComponent(Component):
     functionality including position tracking and orientation management.
     """
     
-    def __init__(self, entity: "Entity", x: int, y: int, movement_points: int):
+    def __init__(self, entity: "Entity", position: Vector2, movement_points: int):
         """Initialize movement component.
         
         Args:
             entity: The entity this component belongs to
-            x: Initial x coordinate
-            y: Initial y coordinate  
+            position: Initial position vector
             movement_points: Base movement points per turn
         """
         super().__init__(entity)
-        self.x = x
-        self.y = y
+        self.position = position
         self.facing = "south"  # Default facing direction
         self.movement_points = movement_points
     
@@ -186,34 +185,31 @@ class MovementComponent(Component):
         """Get the name identifier for this component type."""
         return "Movement"
     
-    def get_position(self) -> tuple[int, int]:
-        """Get the current position as a tuple.
+    def get_position(self) -> Vector2:
+        """Get the current position vector.
         
         Returns:
-            Tuple of (x, y) coordinates
+            Vector2 position
         """
-        return (self.x, self.y)
+        return self.position
     
-    def set_position(self, x: int, y: int) -> None:
+    def set_position(self, position: Vector2) -> None:
         """Set the position directly without movement logic.
         
         Args:
-            x: New x coordinate
-            y: New y coordinate
+            position: New position vector
         """
-        self.x = x
-        self.y = y
+        self.position = position
     
-    def move_to(self, x: int, y: int) -> None:
+    def move_to(self, position: Vector2) -> None:
         """Move to a new position and update facing direction.
         
         Args:
-            x: Target x coordinate
-            y: Target y coordinate
+            position: Target position vector
         """
         # Update facing based on movement direction
-        dx = x - self.x
-        dy = y - self.y
+        dx = position.x - self.position.x
+        dy = position.y - self.position.y
         
         if dx > 0:
             self.facing = "east"
@@ -225,8 +221,7 @@ class MovementComponent(Component):
             self.facing = "north"
         # If dx == 0 and dy == 0, keep current facing
         
-        self.x = x
-        self.y = y
+        self.position = position
     
     def face_direction(self, direction: str) -> None:
         """Set the facing direction explicitly.
@@ -238,15 +233,14 @@ class MovementComponent(Component):
             raise ValueError(f"Invalid facing direction: {direction}")
         self.facing = direction
     
-    def face_towards(self, target_x: int, target_y: int) -> None:
+    def face_towards(self, target: Vector2) -> None:
         """Face towards a target position.
         
         Args:
-            target_x: X coordinate to face towards
-            target_y: Y coordinate to face towards
+            target: Position vector to face towards
         """
-        dx = target_x - self.x
-        dy = target_y - self.y
+        dx = target.x - self.position.x
+        dy = target.y - self.position.y
         
         # Face the direction with the largest absolute difference
         if abs(dx) > abs(dy):
@@ -301,12 +295,11 @@ class CombatComponent(Component):
         mitigation = target_combat.defense
         return max(1, base_damage - mitigation)
     
-    def can_attack(self, target_x: int, target_y: int) -> bool:
+    def can_attack(self, target: Vector2) -> bool:
         """Check if this unit can attack a position based on range.
         
         Args:
-            target_x: Target x coordinate
-            target_y: Target y coordinate
+            target: Target position vector
             
         Returns:
             True if position is within attack range, False otherwise
@@ -316,12 +309,12 @@ class CombatComponent(Component):
         if movement_component is None:
             return False
         
-        # Cast to MovementComponent to access x, y attributes
+        # Cast to MovementComponent to access position attribute
         from typing import cast
         movement = cast('MovementComponent', movement_component)
         
         # Calculate Manhattan distance
-        distance = abs(movement.x - target_x) + abs(movement.y - target_y)
+        distance = movement.position.manhattan_distance_to(target)
         
         return self.attack_range_min <= distance <= self.attack_range_max
     

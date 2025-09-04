@@ -220,8 +220,8 @@ The game uses a **scenario-first asset system** where scenarios are the single s
 - **YAML format**: Human-readable scenario definitions in `assets/scenarios/`
 - **Map references**: Link to map directories for geometry
 - **Complete gameplay**: All units, objects, placements, objectives in one file
-- **Placement system**: Uses `at: [x,y]`, `at_marker: NAME`, or `at_region: NAME`
-- **Markers**: Named coordinate anchors for readability (`KNIGHT_POSITION: { at: [7,2] }`)
+- **Placement system**: Uses `at: [y,x]`, `at_marker: NAME`, or `at_region: NAME`
+- **Markers**: Named coordinate anchors for readability (`KNIGHT_POSITION: { at: [2,7] }`)
 - **Regions**: Named rectangular areas for placement policies and triggers
 - **Objects**: Scenario-specific interactive elements (healing fountains, doors, etc.)
 - **Map overrides**: Optional non-destructive tile patches for environmental variation
@@ -277,7 +277,7 @@ When adding a new renderer:
 5. Define `markers:` for named coordinate anchors (optional, for readability)
 6. Define `regions:` for named rectangular areas (optional, for triggers/placement)
 7. Define `placements:` section binding units/objects to coordinates using:
-   - `at: [x,y]` for explicit coordinates
+   - `at: [y,x]` for explicit coordinates
    - `at_marker: NAME` for marker-based placement
    - `at_region: NAME` for region-based placement (with policies)
 8. Set `objectives:` for victory/defeat conditions

@@ -7,6 +7,8 @@ help screens, minimap, confirmation dialogs, and ephemeral banners.
 import time
 from typing import TYPE_CHECKING, Optional
 
+from ..core.data_structures import Vector2
+
 if TYPE_CHECKING:
     from .map import GameMap
     from .scenario import Scenario
@@ -216,7 +218,7 @@ class UIManager:
         unit_map = {}
         for unit in self.game_map.units.values():
             if unit.is_alive:
-                unit_map[(unit.x, unit.y)] = unit.team.value
+                unit_map[(unit.position.x, unit.position.y)] = unit.team.value
         
         # Build minimap content
         content = [
@@ -236,13 +238,13 @@ class UIManager:
                 
                 # Check if this position is in the camera view
                 screen_width, screen_height = self.renderer.get_screen_size()
-                camera_left = self.state.camera_x
+                camera_left = self.state.camera_position.x
                 camera_right = (
-                    self.state.camera_x + screen_width - 28
+                    self.state.camera_position.x + screen_width - 28
                 )  # Account for sidebar
-                camera_top = self.state.camera_y
+                camera_top = self.state.camera_position.y
                 camera_bottom = (
-                    self.state.camera_y + screen_height - 3
+                    self.state.camera_position.y + screen_height - 3
                 )  # Account for status
                 
                 if (
@@ -292,7 +294,7 @@ class UIManager:
         
         # No units found, show terrain
         if x < self.game_map.width and y < self.game_map.height:
-            tile = self.game_map.get_tile(x, y)
+            tile = self.game_map.get_tile(Vector2(y, x))
             if tile and tile.terrain_type in ["mountain", "wall"]:
                 return "▲"  # Mountain/wall
             elif tile and tile.terrain_type == "water":

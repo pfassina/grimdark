@@ -29,7 +29,7 @@ units:
   - name: Hero Knight
     class: KNIGHT
     team: PLAYER
-    position: [1, 2]
+    position: [2, 1]
     stats_override:
       hp_max: 30  # Enhanced HP for tutorial
 
@@ -37,7 +37,7 @@ units:
   - name: Training Dummy
     class: WARRIOR
     team: ENEMY
-    position: [6, 2]
+    position: [2, 6]
     stats_override:
       hp_max: 10      # Weaker HP for easy victory
       strength: 2     # Reduced damage

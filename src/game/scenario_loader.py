@@ -3,7 +3,7 @@ import os
 from typing import Optional, Any
 from pathlib import Path
 
-from ..core.data_structures import DataConverter
+from ..core.data_structures import DataConverter, Vector2
 
 import yaml
 
@@ -109,8 +109,7 @@ class ScenarioLoader:
                         name=unit_data["name"],
                         unit_class=unit_data["class"],
                         team=unit_data["team"],
-                        x=unit_data["position"][0],
-                        y=unit_data["position"][1],
+                        position=Vector2.from_list(unit_data["position"]),
                         stats_override=unit_data.get("stats_override")
                     )
                 else:
@@ -119,8 +118,7 @@ class ScenarioLoader:
                         name=unit_data["name"],
                         unit_class=unit_data["class"],
                         team=unit_data["team"],
-                        x=0,  # Temporary, will be overridden by placement
-                        y=0,  # Temporary, will be overridden by placement
+                        position=Vector2(0, 0),  # Temporary, will be overridden by placement
                         stats_override=unit_data.get("stats_override")
                     )
                 scenario.units.append(unit)
@@ -211,20 +209,16 @@ class ScenarioLoader:
                 print(f"Warning: Could not resolve placement for '{actor_name}'")
                 continue
             
-            x, y = coordinates
-            
             # Apply coordinates to the actor
             if is_unit:
-                actor.x = x
-                actor.y = y
+                actor.position = coordinates
             else:
-                # For objects, set x and y directly now that ScenarioObject has them
-                actor.x = x
-                actor.y = y
+                # For objects, set position directly now that ScenarioObject has Vector2
+                actor.position = coordinates
     
     @staticmethod
     def _resolve_placement_to_coordinates(placement: ActorPlacement, scenario: Scenario, 
-                                        game_map: GameMap) -> Optional[tuple[int, int]]:
+                                        game_map: GameMap) -> Optional[Vector2]:
         """Resolve a single placement intent to coordinates."""
         import random
         
@@ -296,8 +290,7 @@ class ScenarioLoader:
         elif obj_type == "reach_position":
             position = obj_data.get("position", [0, 0])
             return ReachPositionObjective(
-                x=position[0],
-                y=position[1],
+                position=Vector2(position[0], position[1]),
                 unit_name=obj_data.get("unit_name"),
                 description=obj_data.get("description")
             )
@@ -317,8 +310,7 @@ class ScenarioLoader:
         elif obj_type == "position_captured":
             position = obj_data.get("position", [0, 0])
             return PositionCapturedObjective(
-                x=position[0],
-                y=position[1],
+                position=Vector2(position[0], position[1]),
                 description=obj_data.get("description")
             )
         
@@ -357,7 +349,7 @@ class ScenarioLoader:
                 tile_id = patch["tile_id"]
                 
                 # Validate coordinates
-                if not game_map.is_valid_position(x, y):
+                if not game_map.is_valid_position(Vector2(x, y)):
                     print(f"Warning: Invalid position for tile patch: ({x}, {y})")
                     continue
                 
@@ -366,7 +358,7 @@ class ScenarioLoader:
                 if tile_config:
                     terrain_type_str = tile_config.get('terrain_type', 'plain')
                     terrain_type = TerrainType[terrain_type_str.upper()]
-                    game_map.set_tile(x, y, terrain_type)
+                    game_map.set_tile(Vector2(x, y), terrain_type)
                 else:
                     print(f"Warning: Unknown tile ID in patch: {tile_id}")
         
@@ -390,8 +382,9 @@ class ScenarioLoader:
                 # Apply to all tiles in the region
                 for patch_x in range(x, x + width):
                     for patch_y in range(y, y + height):
-                        if game_map.is_valid_position(patch_x, patch_y):
-                            game_map.set_tile(patch_x, patch_y, terrain_type)
+                        pos = Vector2(patch_x, patch_y)
+                        if game_map.is_valid_position(pos):
+                            game_map.set_tile(pos, terrain_type)
     
     @staticmethod
     def validate_scenario(scenario: Scenario, game_map: Optional[GameMap] = None) -> list[str]:
@@ -434,12 +427,12 @@ class ScenarioLoader:
             # Validate coordinates are in bounds (if map provided)
             if game_map and placement.placement_at:
                 x, y = placement.placement_at
-                if not game_map.is_valid_position(x, y):
+                if not game_map.is_valid_position(Vector2(x, y)):
                     errors.append(f"Placement '{actor_name}' has out-of-bounds coordinates: ({x}, {y})")
                 else:
                     # Check if tile is passable for units
                     if actor_name in unit_names:
-                        tile = game_map.get_tile(x, y)
+                        tile = game_map.get_tile(Vector2(x, y))
                         if tile and tile.blocks_movement:
                             errors.append(f"Unit placement '{actor_name}' on impassable tile at ({x}, {y})")
         
@@ -452,23 +445,23 @@ class ScenarioLoader:
                 if actor_name in unit_names:
                     # For units, check if they have old-style position
                     unit = next(u for u in scenario.units if u.name == actor_name)
-                    if unit.x == 0 and unit.y == 0:  # Default values indicate no position set
+                    if unit.position == Vector2(0, 0):  # Default values indicate no position set
                         errors.append(f"Unit '{actor_name}' has no placement defined")
         
         # Validate marker coordinates are in bounds (if map provided)
         if game_map:
             for marker_name, marker in scenario.markers.items():
                 x, y = marker.position
-                if not game_map.is_valid_position(x, y):
+                if not game_map.is_valid_position(Vector2(x, y)):
                     errors.append(f"Marker '{marker_name}' has out-of-bounds coordinates: ({x}, {y})")
         
         # Validate region bounds (if map provided)
         if game_map:
             for region_name, region in scenario.regions.items():
                 x, y, width, height = region.rect
-                if not game_map.is_valid_position(x, y):
+                if not game_map.is_valid_position(Vector2(x, y)):
                     errors.append(f"Region '{region_name}' has out-of-bounds starting coordinates: ({x}, {y})")
-                if not game_map.is_valid_position(x + width - 1, y + height - 1):
+                if not game_map.is_valid_position(Vector2(x + width - 1, y + height - 1)):
                     errors.append(f"Region '{region_name}' extends beyond map bounds")
         
         return errors
@@ -506,7 +499,7 @@ class ScenarioLoader:
                 
                 # Add unit to map
                 if not game_map.add_unit(unit):
-                    print(f"Warning: Could not place unit '{unit.name}' at ({unit.x}, {unit.y})")
+                    print(f"Warning: Could not place unit '{unit.name}' at ({unit.position.x}, {unit.position.y})")
             except (KeyError, ValueError) as e:
                 print(f"Warning: Error creating unit '{unit_data.name}': {e}")
                 continue
@@ -543,7 +536,7 @@ class ScenarioLoader:
                 "name": unit.name,
                 "class": unit.unit_class,
                 "team": unit.team,
-                "position": [unit.x, unit.y]
+                "position": [unit.position.x, unit.position.y]
             }
             if unit.stats_override:
                 unit_dict["stats_override"] = unit.stats_override

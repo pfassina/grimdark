@@ -1,6 +1,7 @@
 from enum import Enum, auto
 from dataclasses import dataclass, field
 from typing import Optional, Any
+from .data_structures import Vector2
 
 
 class GamePhase(Enum):
@@ -31,18 +32,14 @@ class GameState:
     current_team: int = 0
     
     selected_unit_id: Optional[str] = None
-    selected_tile_x: Optional[int] = None
-    selected_tile_y: Optional[int] = None
+    selected_tile_position: Optional[Vector2] = None
     
     # Original position tracking for cancellation
-    original_unit_x: Optional[int] = None
-    original_unit_y: Optional[int] = None
+    original_unit_position: Optional[Vector2] = None
     
-    cursor_x: int = 0
-    cursor_y: int = 0
+    cursor_position: Vector2 = field(default_factory=lambda: Vector2(0, 0))
     
-    camera_x: int = 0
-    camera_y: int = 0
+    camera_position: Vector2 = field(default_factory=lambda: Vector2(0, 0))
     
     active_menu: Optional[str] = None
     menu_selection: int = 0
@@ -58,12 +55,12 @@ class GameState:
     dialog_selection: int = 0             # For dialog option selection
     active_forecast: bool = False         # Battle forecast during targeting
     
-    movement_range: list[tuple] = field(default_factory=list)
-    attack_range: list[tuple] = field(default_factory=list)
+    movement_range: list[Vector2] = field(default_factory=list)
+    attack_range: list[Vector2] = field(default_factory=list)
     
     # Attack targeting state
-    selected_target: Optional[tuple[int, int]] = None
-    aoe_tiles: list[tuple[int, int]] = field(default_factory=list)
+    selected_target: Optional[Vector2] = None
+    aoe_tiles: list[Vector2] = field(default_factory=list)
     
     # Unit cycling state
     selectable_units: list[str] = field(default_factory=list)
@@ -77,10 +74,8 @@ class GameState:
     
     def reset_selection(self) -> None:
         self.selected_unit_id = None
-        self.selected_tile_x = None
-        self.selected_tile_y = None
-        self.original_unit_x = None
-        self.original_unit_y = None
+        self.selected_tile_position = None
+        self.original_unit_position = None
         self.movement_range.clear()
         self.attack_range.clear()
         self.selected_target = None
@@ -94,25 +89,27 @@ class GameState:
         self.close_dialog()
         self.stop_forecast()
     
-    def set_cursor_position(self, x: int, y: int) -> None:
-        self.cursor_x = x
-        self.cursor_y = y
+    def set_cursor_position(self, position: Vector2) -> None:
+        self.cursor_position = position
     
     def move_cursor(self, dx: int, dy: int, max_x: int, max_y: int) -> None:
-        self.cursor_x = max(0, min(max_x - 1, self.cursor_x + dx))
-        self.cursor_y = max(0, min(max_y - 1, self.cursor_y + dy))
+        new_x = max(0, min(max_x - 1, self.cursor_position.x + dx))
+        new_y = max(0, min(max_y - 1, self.cursor_position.y + dy))
+        self.cursor_position = Vector2(new_y, new_x)
+        # move_cursor already handles both x and y above
     
-    def set_movement_range(self, tiles: list[tuple]) -> None:
+    
+    def set_movement_range(self, tiles: list[Vector2]) -> None:
         self.movement_range = tiles
     
-    def set_attack_range(self, tiles: list[tuple]) -> None:
+    def set_attack_range(self, tiles: list[Vector2]) -> None:
         self.attack_range = tiles
     
-    def is_in_movement_range(self, x: int, y: int) -> bool:
-        return (x, y) in self.movement_range
+    def is_in_movement_range(self, position: Vector2) -> bool:
+        return position in self.movement_range
     
-    def is_in_attack_range(self, x: int, y: int) -> bool:
-        return (x, y) in self.attack_range
+    def is_in_attack_range(self, position: Vector2) -> bool:
+        return position in self.attack_range
     
     def start_player_turn(self) -> None:
         self.battle_phase = BattlePhase.PLAYER_TURN_START
@@ -211,15 +208,15 @@ class GameState:
     def update_camera_to_cursor(self, viewport_width: int, viewport_height: int) -> None:
         margin = 3
         
-        if self.cursor_x < self.camera_x + margin:
-            self.camera_x = max(0, self.cursor_x - margin)
-        elif self.cursor_x >= self.camera_x + viewport_width - margin:
-            self.camera_x = self.cursor_x - viewport_width + margin + 1
+        if self.cursor_position.x < self.camera_position.x + margin:
+            self.camera_position = Vector2(self.camera_position.y, max(0, self.cursor_position.x - margin))
+        elif self.cursor_position.x >= self.camera_position.x + viewport_width - margin:
+            self.camera_position = Vector2(self.camera_position.y, self.cursor_position.x - viewport_width + margin + 1)
         
-        if self.cursor_y < self.camera_y + margin:
-            self.camera_y = max(0, self.cursor_y - margin)
-        elif self.cursor_y >= self.camera_y + viewport_height - margin:
-            self.camera_y = self.cursor_y - viewport_height + margin + 1
+        if self.cursor_position.y < self.camera_position.y + margin:
+            self.camera_position = Vector2(max(0, self.cursor_position.y - margin), self.camera_position.x)
+        elif self.cursor_position.y >= self.camera_position.y + viewport_height - margin:
+            self.camera_position = Vector2(self.cursor_position.y - viewport_height + margin + 1, self.camera_position.x)
     
     def set_selectable_units(self, unit_ids: list[str]) -> None:
         """Set the list of units that can be selected and reset index."""

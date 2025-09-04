@@ -72,7 +72,7 @@ objectives:
 ```yaml
 placements:
   "Unit Name":
-    at: [x, y]
+    at: [y, x]
 ```
 
 ### Using Markers
@@ -127,9 +127,9 @@ placements:
 ```yaml
 defeat_all_enemies              # Kill all enemies
 survive_turns: {turns: 10}      # Last X turns
-reach_position: {position: [x,y], unit_name: "Hero"}
+reach_position: {position: [y,x], unit_name: "Hero"}
 defeat_unit: {unit_name: "Boss"}
-position_captured: {position: [x,y]}
+position_captured: {position: [y,x]}
 ```
 
 ## Defeat Objective Types

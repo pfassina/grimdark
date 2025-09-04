@@ -2,6 +2,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .game_enums import LayerType
+from .data_structures import Vector2
 
 
 @dataclass
@@ -29,8 +30,7 @@ class Color:
 
 @dataclass
 class TileRenderData:
-    x: int
-    y: int
+    position: Vector2
     terrain_type: str
     elevation: int = 0
     highlight: Optional[str] = None
@@ -50,8 +50,7 @@ class UnitRenderData:
     
     Conversion: Unit -> UnitRenderData (via DataConverter.unit_to_render_data)
     """
-    x: int                      # Screen/map x-coordinate  
-    y: int                      # Screen/map y-coordinate
+    position: Vector2           # Screen/map position
     unit_type: str              # Unit class name for display
     team: int                   # Team ID for color/symbol selection
     hp_current: int             # Current hit points
@@ -80,8 +79,7 @@ class UnitRenderData:
 
 @dataclass
 class CursorRenderData:
-    x: int
-    y: int
+    position: Vector2
     cursor_type: str = "default"
     
     @property
@@ -91,8 +89,7 @@ class CursorRenderData:
 
 @dataclass
 class OverlayTileRenderData:
-    x: int
-    y: int
+    position: Vector2
     overlay_type: str
     opacity: float = 0.5
     
@@ -104,8 +101,7 @@ class OverlayTileRenderData:
 @dataclass
 class AttackTargetRenderData:
     """Data for rendering attack targeting overlays with AOE support."""
-    x: int
-    y: int
+    position: Vector2
     target_type: str  # "range", "aoe", "selected"
     blink_phase: bool = False  # For animation timing
     

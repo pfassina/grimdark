@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ..core.game_enums import TerrainType
 from ..core.game_info import TERRAIN_DATA
+from ..core.data_structures import Vector2
 
 if TYPE_CHECKING:
     from .unit import Unit
@@ -10,8 +11,7 @@ if TYPE_CHECKING:
 
 @dataclass
 class Tile:
-    x: int
-    y: int
+    position: Vector2
     terrain_type: TerrainType
     elevation: int = 0
     

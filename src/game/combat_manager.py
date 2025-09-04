@@ -6,6 +6,8 @@ combat resolution and the game state.
 """
 from typing import TYPE_CHECKING, Optional, Callable
 
+from ..core.data_structures import Vector2
+
 if TYPE_CHECKING:
     from .map import GameMap
     from .unit import Unit
@@ -28,7 +30,7 @@ class CombatManager:
         self.state = game_state
         self.resolver = CombatResolver(game_map)
         self.calculator = BattleCalculator()
-        self.emit_event = event_emitter or (lambda e: None)
+        self.emit_event = event_emitter or (lambda _: None)
         
     def setup_attack_targeting(self, unit: "Unit") -> None:
         """Set up attack targeting for a unit."""
@@ -51,7 +53,7 @@ class CombatManager:
         if not self.state.attack_range:
             return
             
-        cursor_pos = (self.state.cursor_x, self.state.cursor_y)
+        cursor_pos = self.state.cursor_position
         
         # Check if cursor is over a valid attack target
         if cursor_pos in self.state.attack_range:
@@ -78,10 +80,9 @@ class CombatManager:
         Returns:
             True if attack was executed, False if invalid or cancelled
         """
-        cursor_x = self.state.cursor_x
-        cursor_y = self.state.cursor_y
+        cursor_position = self.state.cursor_position
         
-        if not self.state.is_in_attack_range(cursor_x, cursor_y):
+        if not self.state.is_in_attack_range(cursor_position):
             return False
             
         if not self.state.selected_unit_id:
@@ -94,7 +95,7 @@ class CombatManager:
         # Execute attack using resolver
         result = self.resolver.execute_aoe_attack(
             attacker, 
-            (cursor_x, cursor_y), 
+            cursor_position, 
             attacker.combat.aoe_pattern
         )
         
@@ -105,7 +106,7 @@ class CombatManager:
         # If there are friendly units that will be hit, request confirmation
         if result.friendly_fire:
             friendly_names = [t.name for t in result.targets_hit if t.team == attacker.team]
-            self._store_friendly_fire_confirmation(cursor_x, cursor_y, result, friendly_names)
+            self._store_friendly_fire_confirmation(cursor_position, result, friendly_names)
             return False  # Wait for confirmation
         
         # No friendly fire, complete the attack
@@ -145,8 +146,8 @@ class CombatManager:
         attack_range = self.game_map.calculate_attack_range(attacking_unit)
         
         targetable_ids = []
-        for x, y in attack_range:
-            target_unit = self.game_map.get_unit_at(x, y)
+        for position in attack_range:
+            target_unit = self.game_map.get_unit_at(position)
             # Only include enemy units for tab cycling, not friendlies
             if (
                 target_unit
@@ -170,17 +171,14 @@ class CombatManager:
             target_unit = self.game_map.get_unit(target_id)
             if target_unit:
                 # Calculate Manhattan distance
-                distance = abs(attacking_unit.x - target_unit.x) + abs(
-                    attacking_unit.y - target_unit.y
-                )
+                distance = attacking_unit.position.manhattan_distance_to(target_unit.position)
                 if distance < closest_distance:
                     closest_distance = distance
                     closest_target = target_unit
         
         # Position cursor on closest target
         if closest_target:
-            self.state.cursor_x = closest_target.x
-            self.state.cursor_y = closest_target.y
+            self.state.cursor_position = closest_target.position
             
             # Update the target index to match the cursor position
             try:
@@ -214,8 +212,7 @@ class CombatManager:
         if next_target_id:
             target_unit = self.game_map.get_unit(next_target_id)
             if target_unit:
-                self.state.cursor_x = target_unit.x
-                self.state.cursor_y = target_unit.y
+                self.state.cursor_position = target_unit.position
                 return True
         
         return False
@@ -228,8 +225,7 @@ class CombatManager:
     
     def _store_friendly_fire_confirmation(
         self, 
-        cursor_x: int, 
-        cursor_y: int, 
+        cursor_position: Vector2, 
         result: CombatResult, 
         friendly_names: list[str]
     ) -> None:
@@ -245,8 +241,7 @@ class CombatManager:
         
         # Store the attack data for later execution
         self.state.state_data["pending_attack"] = {
-            "cursor_x": cursor_x,
-            "cursor_y": cursor_y,
+            "cursor_position": cursor_position,
             "targets_hit": result.targets_hit,
         }
         

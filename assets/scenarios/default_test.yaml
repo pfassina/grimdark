@@ -32,28 +32,28 @@ units:
   - name: Archer 1
     class: ARCHER
     team: PLAYER
-    position: [4, 3]
+    position: [3, 4]
     
   - name: Mage 1
     class: MAGE
     team: PLAYER
-    position: [3, 5]
+    position: [5, 3]
 
   # === ENEMY TEAM ===  
   - name: Enemy Knight
     class: KNIGHT
     team: ENEMY
-    position: [15, 8]
+    position: [8, 15]
     
   - name: Enemy Archer
     class: ARCHER
     team: ENEMY
-    position: [14, 7]
+    position: [7, 14]
     
   - name: Enemy Warrior
     class: WARRIOR
     team: ENEMY
-    position: [16, 9]
+    position: [9, 16]
 
 # Simple victory/defeat conditions for testing
 objectives:

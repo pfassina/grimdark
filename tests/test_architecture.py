@@ -8,6 +8,7 @@ from src.core.renderable import (
     RenderContext, TileRenderData, UnitRenderData,
     CursorRenderData
 )
+from src.core.data_structures import Vector2
 from src.game.map import GameMap
 from src.game.tile import TerrainType
 from src.game.unit import Unit, UnitClass, Team
@@ -21,17 +22,17 @@ def test_architecture():
     game_map = GameMap(20, 15)
     
     for x in range(3, 7):
-        game_map.set_tile(x, 3, TerrainType.FOREST)
+        game_map.set_tile(Vector2(3, x), TerrainType.FOREST)
     
     for y in range(5, 8):
-        game_map.set_tile(10, y, TerrainType.MOUNTAIN)
+        game_map.set_tile(Vector2(y, 10), TerrainType.MOUNTAIN)
     
     print(f"   Map created: {game_map.width}x{game_map.height}")
     
     print("\n2. Adding units...")
-    knight = Unit("Knight 1", UnitClass.KNIGHT, Team.PLAYER, 2, 2)
-    archer = Unit("Archer 1", UnitClass.ARCHER, Team.PLAYER, 4, 3)
-    enemy = Unit("Enemy Knight", UnitClass.KNIGHT, Team.ENEMY, 15, 8)
+    knight = Unit("Knight 1", UnitClass.KNIGHT, Team.PLAYER, Vector2(2, 2))
+    archer = Unit("Archer 1", UnitClass.ARCHER, Team.PLAYER, Vector2(3, 4))
+    enemy = Unit("Enemy Knight", UnitClass.KNIGHT, Team.ENEMY, Vector2(8, 15))
     
     game_map.add_unit(knight)
     game_map.add_unit(archer)
@@ -54,26 +55,25 @@ def test_architecture():
     
     for y in range(10):
         for x in range(20):
-            tile = game_map.get_tile(x, y)
+            pos = Vector2(y, x)
+            tile = game_map.get_tile(pos)
             if tile:
                 context.tiles.append(TileRenderData(
-                    x=x,
-                    y=y,
+                    position=pos,
                     terrain_type=tile.terrain_type.name.lower(),
                     elevation=tile.elevation
                 ))
     
     for unit in game_map.units.values():
         context.units.append(UnitRenderData(
-            x=unit.x,
-            y=unit.y,
+            position=unit.position,
             unit_type=unit.actor.get_class_name(),
             team=unit.team.value,
             hp_current=unit.hp_current,
             hp_max=unit.health.hp_max
         ))
     
-    context.cursor = CursorRenderData(x=2, y=2)
+    context.cursor = CursorRenderData(position=Vector2(2, 2))
     
     print(f"   Render context has {len(context.tiles)} tiles")
     print(f"   Render context has {len(context.units)} units")
@@ -84,22 +84,22 @@ def test_architecture():
     grid = [['.' for _ in range(20)] for _ in range(10)]
     
     for tile in context.tiles[:200]:
-        if 0 <= tile.x < 20 and 0 <= tile.y < 10:
+        if 0 <= tile.position.x < 20 and 0 <= tile.position.y < 10:
             terrain_symbols = {
                 "plain": ".",
                 "forest": "F",
                 "mountain": "M",
                 "water": "~",
             }
-            grid[tile.y][tile.x] = terrain_symbols.get(tile.terrain_type, "?")
+            grid[tile.position.y][tile.position.x] = terrain_symbols.get(tile.terrain_type, "?")
     
     for unit in context.units:
-        if 0 <= unit.x < 20 and 0 <= unit.y < 10:
+        if 0 <= unit.position.x < 20 and 0 <= unit.position.y < 10:
             team_symbols = {0: "@", 1: "E", 2: "A", 3: "N"}
-            grid[unit.y][unit.x] = team_symbols.get(unit.team, "?")
+            grid[unit.position.y][unit.position.x] = team_symbols.get(unit.team, "?")
     
-    if context.cursor and 0 <= context.cursor.x < 20 and 0 <= context.cursor.y < 10:
-        grid[context.cursor.y][context.cursor.x] = "X"
+    if context.cursor and 0 <= context.cursor.position.x < 20 and 0 <= context.cursor.position.y < 10:
+        grid[context.cursor.position.y][context.cursor.position.x] = "X"
     
     for row in grid:
         print("   " + "".join(row))

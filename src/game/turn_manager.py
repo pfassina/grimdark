@@ -28,7 +28,7 @@ class TurnManager:
     ):
         self.game_map = game_map
         self.state = game_state
-        self.emit_event = event_emitter or (lambda e: None)
+        self.emit_event = event_emitter or (lambda _: None)
         self.ui_manager = ui_manager
         
         # Enemy turn processing timing

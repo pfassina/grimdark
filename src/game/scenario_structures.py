@@ -8,6 +8,7 @@ unit data for loading.
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
+from ..core.data_structures import Vector2
 
 if TYPE_CHECKING:
     from .map import GameMap
@@ -27,14 +28,14 @@ class ScenarioMarker:
     """Named position marker for scenario use."""
 
     name: str
-    position: tuple[int, int]
+    position: Vector2
     description: Optional[str] = None
 
     @classmethod
     def from_dict(cls, name: str, data: dict[str, Any]) -> "ScenarioMarker":
         """Create marker from YAML data."""
         return cls(
-            name=name, position=tuple(data["at"]), description=data.get("description")
+            name=name, position=Vector2.from_list(data["at"]), description=data.get("description")
         )
 
 
@@ -54,21 +55,22 @@ class ScenarioRegion:
             name=name, rect=tuple(rect_data), description=data.get("description")
         )
 
-    def contains_position(self, x: int, y: int) -> bool:
+    def contains_position(self, position: Vector2) -> bool:
         """Check if position is within this region."""
         rx, ry, rw, rh = self.rect
-        return rx <= x < rx + rw and ry <= y < ry + rh
+        return rx <= position.x < rx + rw and ry <= position.y < ry + rh
 
-    def get_free_positions(self, game_map: "GameMap") -> list[tuple[int, int]]:
+    def get_free_positions(self, game_map: "GameMap") -> list[Vector2]:
         """Get all free positions within this region."""
         positions = []
         rx, ry, rw, rh = self.rect
         for x in range(rx, rx + rw):
             for y in range(ry, ry + rh):
-                if game_map.is_valid_position(x, y) and not game_map.get_unit_at(x, y):
-                    tile = game_map.get_tile(x, y)
+                pos = Vector2(y, x)
+                if game_map.is_valid_position(pos) and not game_map.get_unit_at(pos):
+                    tile = game_map.get_tile(pos)
                     if tile and not tile.blocks_movement:
-                        positions.append((x, y))
+                        positions.append(pos)
         return positions
 
 
@@ -78,8 +80,7 @@ class ScenarioObject:
 
     name: str
     object_type: str  # chest, door, portal, etc.
-    x: int = 0
-    y: int = 0
+    position: Vector2 = field(default_factory=lambda: Vector2(0, 0))
     properties: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -117,7 +118,7 @@ class ActorPlacement:
     """Placement information for units and objects."""
 
     actor_name: str
-    placement_at: Optional[tuple[int, int]] = None
+    placement_at: Optional[Vector2] = None
     placement_marker: Optional[str] = None
     placement_region: Optional[str] = None
     placement_policy: PlacementPolicy = PlacementPolicy.RANDOM_FREE_TILE
@@ -140,7 +141,7 @@ class ActorPlacement:
         placement_policy = PlacementPolicy.RANDOM_FREE_TILE
 
         if "at" in data:
-            placement_at = tuple(data["at"])
+            placement_at = Vector2.from_list(data["at"])
         elif "at_marker" in data:
             placement_marker = data["at_marker"]
         elif "at_region" in data:
@@ -171,8 +172,7 @@ class UnitData:
     name: str  # Display name of the unit
     unit_class: str  # Unit class as string (e.g., "KNIGHT")
     team: str  # Team affiliation as string (e.g., "PLAYER")
-    x: int  # Map x-coordinate
-    y: int  # Map y-coordinate
+    position: Vector2  # Map position
     stats_override: Optional[dict[str, int]] = None  # Optional stat modifications
 
 

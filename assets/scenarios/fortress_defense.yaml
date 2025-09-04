@@ -15,23 +15,23 @@ map:
 # Named markers for key positions
 markers:
   KNIGHT_POSITION:
-    at: [7, 2]
+    at: [2, 7]
     description: Central command position for knight
   CLERIC_POSITION:
-    at: [7, 3]
+    at: [3, 7]
     description: Protected healing position
   HEALING_FOUNTAIN:
-    at: [7, 3]
+    at: [3, 7]
     description: Magical fountain that heals allies
 
 # Tactical regions
 regions:
   FORTRESS_KEEP:
-    rect: [5, 2, 5, 4]
+    rect: [2, 5, 5, 4]
     description: The fortress provides excellent defense
   
   FORTRESS_WALLS:
-    rect: [4, 1, 7, 6]
+    rect: [1, 4, 7, 6]
     description: Defensive walls of the fortress
   
   NORTH_GATE:
@@ -39,15 +39,15 @@ regions:
     description: Main entrance to the fortress
   
   BATTLEFIELD:
-    rect: [0, 8, 15, 2]
+    rect: [8, 0, 15, 2]
     description: Open ground with no cover
   
   ARCHER_POSITIONS:
-    rect: [5, 3, 5, 1]
+    rect: [3, 5, 5, 1]
     description: Elevated positions for ranged units
   
   ENEMY_SPAWN_AREA:
-    rect: [1, 10, 13, 1]
+    rect: [10, 1, 13, 1]
     description: Enemy approach zone
 
 # Unit definitions (no positions here)
@@ -136,35 +136,35 @@ placements:
     at_marker: KNIGHT_POSITION
     
   "Archer Elena":
-    at: [5, 3]  # Western archer position
+    at: [3, 5]  # Western archer position
     
   "Archer Marcus": 
-    at: [9, 3]  # Eastern archer position
+    at: [3, 9]  # Eastern archer position
     
   "Mage Theron":
     at_marker: CLERIC_POSITION
   
   # Enemy units - distributed across battlefield  
   "Enemy Captain":
-    at: [7, 10]  # Center of enemy formation
+    at: [10, 7]  # Center of enemy formation
     
   "Enemy Knight Alpha":
-    at: [2, 10]  # Western flank
+    at: [10, 2]  # Western flank
     
   "Enemy Knight Beta":
-    at: [12, 10]  # Eastern flank
+    at: [10, 12]  # Eastern flank
     
   "Enemy Warrior One":
-    at: [4, 10]  # Left support
+    at: [10, 4]  # Left support
     
   "Enemy Warrior Two":
     at: [10, 10]  # Right support
     
   "Enemy Warrior Three":
-    at: [6, 10]  # Left-center support
+    at: [10, 6]  # Left-center support
     
   "Enemy Archer":
-    at: [8, 10]  # Right-center support
+    at: [10, 8]  # Right-center support
   
   # Objects
   HEALING_FOUNTAIN:
@@ -184,7 +184,7 @@ objectives:
       unit_name: Sir Aldric
       description: Sir Aldric must survive
     - type: position_captured
-      position: [7, 9]
+      position: [9, 7]
       description: Don't let enemies capture the fort
 
 # Game settings

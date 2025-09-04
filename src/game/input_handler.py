@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from ..core.game_enums import Team
 from ..core.game_state import BattlePhase
 from ..core.input import InputEvent, InputType, Key
+from ..core.data_structures import Vector2
 
 
 class InputHandler:
@@ -140,37 +141,35 @@ class InputHandler:
     
     def handle_confirm(self) -> None:
         """Handle confirmation input based on current battle phase."""
-        cursor_x = self.state.cursor_x
-        cursor_y = self.state.cursor_y
+        cursor_position = self.state.cursor_position
         
         if self.state.battle_phase == BattlePhase.UNIT_SELECTION:
-            self._handle_unit_selection_confirm(cursor_x, cursor_y)
+            self._handle_unit_selection_confirm(cursor_position)
         elif self.state.battle_phase == BattlePhase.UNIT_MOVING:
-            self._handle_unit_movement_confirm(cursor_x, cursor_y)
+            self._handle_unit_movement_confirm(cursor_position)
         elif self.state.battle_phase == BattlePhase.ACTION_MENU:
             self._handle_action_menu_confirm()
         elif self.state.battle_phase == BattlePhase.UNIT_ACTING:
             self._handle_unit_acting_confirm()
     
-    def _handle_unit_selection_confirm(self, cursor_x: int, cursor_y: int) -> None:
+    def _handle_unit_selection_confirm(self, cursor_position: Vector2) -> None:
         """Handle confirmation during unit selection phase."""
-        unit = self.game_map.get_unit_at(cursor_x, cursor_y)
+        unit = self.game_map.get_unit_at(cursor_position)
         if unit and unit.team == Team.PLAYER and unit.can_move and unit.can_act:
             self.state.selected_unit_id = unit.unit_id
             # Store original position for potential cancellation
-            self.state.original_unit_x = unit.x
-            self.state.original_unit_y = unit.y
+            self.state.original_unit_position = unit.position
             self.state.battle_phase = BattlePhase.UNIT_MOVING
             movement_range = self.game_map.calculate_movement_range(unit)
             self.state.set_movement_range(list(movement_range))
     
-    def _handle_unit_movement_confirm(self, cursor_x: int, cursor_y: int) -> None:
+    def _handle_unit_movement_confirm(self, cursor_position: Vector2) -> None:
         """Handle confirmation during unit movement phase."""
-        if self.state.is_in_movement_range(cursor_x, cursor_y):
+        if self.state.is_in_movement_range(cursor_position):
             if self.state.selected_unit_id:
                 unit = self.game_map.get_unit(self.state.selected_unit_id)
                 if unit:
-                    if self.game_map.move_unit(unit.unit_id, cursor_x, cursor_y):
+                    if self.game_map.move_unit(unit.unit_id, cursor_position):
                         # TODO: Emit unit moved event - will be handled by main Game class
                         pass
                     unit.has_moved = True
@@ -245,15 +244,9 @@ class InputHandler:
     
     def _restore_unit_to_original_position(self, unit: Optional["Unit"]) -> None:
         """Restore unit to its original position if possible."""
-        if (
-            unit
-            and self.state.original_unit_x is not None
-            and self.state.original_unit_y is not None
-        ):
+        if unit and self.state.original_unit_position is not None:
             # Restore unit to original position
-            if self.game_map.move_unit(
-                unit.unit_id, self.state.original_unit_x, self.state.original_unit_y
-            ):
+            if self.game_map.move_unit(unit.unit_id, self.state.original_unit_position):
                 # TODO: Emit unit moved event for restoration
                 pass
             unit.has_moved = False
@@ -265,8 +258,7 @@ class InputHandler:
             self.state.set_movement_range(list(movement_range))
             
             # Position cursor on the restored unit
-            self.state.cursor_x = unit.x
-            self.state.cursor_y = unit.y
+            self.state.cursor_position = unit.position
         else:
             # Fallback: deselect and refresh
             self.state.reset_selection()
@@ -290,8 +282,7 @@ class InputHandler:
         if next_unit_id:
             unit = self.game_map.get_unit(next_unit_id)
             if unit:
-                self.state.cursor_x = unit.x
-                self.state.cursor_y = unit.y
+                self.state.cursor_position = unit.position
     
     def _refresh_selectable_units(self) -> None:
         """Update the list of selectable player units."""
@@ -355,8 +346,8 @@ class InputHandler:
         """Handle dialog confirmation based on dialog type."""
         if self.state.active_dialog == "confirm_end_turn":
             if self.state.get_dialog_selection() == 0:  # Yes
-                # TODO: End player turn - will be handled by TurnManager
-                pass
+                if self.on_end_unit_turn:
+                    self.on_end_unit_turn()
         elif self.state.active_dialog == "confirm_friendly_fire":
             if (
                 self.state.get_dialog_selection() == 0  # Yes - proceed with attack
@@ -498,8 +489,8 @@ class InputHandler:
         attack_range = self.game_map.calculate_attack_range(unit)
         has_enemy_targets = False
         
-        for x, y in attack_range:
-            target_unit = self.game_map.get_unit_at(x, y)
+        for position in attack_range:
+            target_unit = self.game_map.get_unit_at(position)
             if (
                 target_unit
                 and target_unit.unit_id != unit.unit_id

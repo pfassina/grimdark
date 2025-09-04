@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING, Optional
 
 from ..core.events import EventType, ObjectiveContext
 from ..core.game_enums import ObjectiveStatus, ObjectiveType
+from ..core.data_structures import Vector2
 
 if TYPE_CHECKING:
     from ..core.game_view import GameView
@@ -128,7 +129,7 @@ class SurviveTurnsObjective(Objective):
         else:
             self.status = ObjectiveStatus.IN_PROGRESS
 
-    def recompute(self, view: "GameView") -> ObjectiveStatus:
+    def recompute(self, view: "GameView") -> ObjectiveStatus:  # noqa: ARG002
         """Check current turn against requirement (needs turn from context)."""
         # Note: recompute needs current turn, but GameView doesn't provide it
         # This objective relies on event-driven updates for turn tracking
@@ -140,16 +141,14 @@ class ReachPositionObjective(Objective):
 
     def __init__(
         self,
-        x: int,
-        y: int,
+        position: Vector2,
         unit_name: Optional[str] = None,
         description: Optional[str] = None,
     ):
-        desc = description or f"Move {unit_name or 'any unit'} to ({x}, {y})"
+        desc = description or f"Move {unit_name or 'any unit'} to ({position.x}, {position.y})"
         super().__init__(ObjectiveType.REACH_POSITION, desc)
         self.unit_name = unit_name
-        self.target_x = x
-        self.target_y = y
+        self.target_position = position
 
     @property
     def interests(self) -> tuple[EventType, ...]:
@@ -163,10 +162,7 @@ class ReachPositionObjective(Objective):
 
         if isinstance(context.event, UnitMoved):
             # Check if a player unit reached the target position
-            if context.event.team == Team.PLAYER and context.event.to_position == (
-                self.target_x,
-                self.target_y,
-            ):
+            if context.event.team == Team.PLAYER and context.event.to_position == self.target_position:
                 # If no specific unit required, or the right unit moved there
                 if self.unit_name is None or context.event.unit_name == self.unit_name:
                     self.status = ObjectiveStatus.COMPLETED
@@ -189,7 +185,7 @@ class ReachPositionObjective(Objective):
         from ..core.game_enums import Team
 
         # Check if target position is occupied by appropriate unit
-        unit_at_pos = view.get_unit_at(self.target_x, self.target_y)
+        unit_at_pos = view.get_unit_at(self.target_position)
         if unit_at_pos and unit_at_pos.team == Team.PLAYER:
             if self.unit_name is None or unit_at_pos.name == self.unit_name:
                 self.status = ObjectiveStatus.COMPLETED
@@ -273,11 +269,10 @@ class ProtectUnitObjective(Objective):
 class PositionCapturedObjective(Objective):
     """Defeat condition: enemy reaches specific position."""
 
-    def __init__(self, x: int, y: int, description: Optional[str] = None):
-        desc = description or f"Prevent enemies from reaching ({x}, {y})"
+    def __init__(self, position: Vector2, description: Optional[str] = None):
+        desc = description or f"Prevent enemies from reaching ({position.x}, {position.y})"
         super().__init__(ObjectiveType.POSITION_CAPTURED, desc)
-        self.position_x = x
-        self.position_y = y
+        self.position = position
 
     @property
     def interests(self) -> tuple[EventType, ...]:
@@ -290,17 +285,14 @@ class PositionCapturedObjective(Objective):
         from ..core.game_enums import Team
 
         if isinstance(context.event, UnitMoved):
-            if context.event.team == Team.ENEMY and context.event.to_position == (
-                self.position_x,
-                self.position_y,
-            ):
+            if context.event.team == Team.ENEMY and context.event.to_position == self.position:
                 self.status = ObjectiveStatus.FAILED
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
         """Check if position is currently occupied by enemy."""
         from ..core.game_enums import Team
 
-        unit_at_pos = view.get_unit_at(self.position_x, self.position_y)
+        unit_at_pos = view.get_unit_at(self.position)
         if unit_at_pos and unit_at_pos.team == Team.ENEMY:
             self.status = ObjectiveStatus.FAILED
         else:
@@ -328,7 +320,7 @@ class TurnLimitObjective(Objective):
         else:
             self.status = ObjectiveStatus.IN_PROGRESS
 
-    def recompute(self, view: "GameView") -> ObjectiveStatus:
+    def recompute(self, view: "GameView") -> ObjectiveStatus:  # noqa: ARG002
         """Cannot determine current turn from GameView alone."""
         # This objective relies on event-driven updates for turn tracking
         return self.status

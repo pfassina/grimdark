@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     from ..core.game_state import GameState
     from ..core.renderer import Renderer
 
-from ..core.data_structures import DataConverter
+from ..core.data_structures import DataConverter, Vector2
 from ..core.game_state import GamePhase
 from ..core.renderable import (
     AttackTargetRenderData,
@@ -70,8 +70,8 @@ class RenderBuilder:
         self.state.update_camera_to_cursor(screen_width, viewport_height)
         
         # Set viewport information
-        context.viewport_x = self.state.camera_x
-        context.viewport_y = self.state.camera_y
+        context.viewport_x = self.state.camera_position.x
+        context.viewport_y = self.state.camera_position.y
         context.viewport_width = screen_width
         context.viewport_height = viewport_height
         
@@ -155,12 +155,12 @@ class RenderBuilder:
         """Add tile data to the render context."""
         for y in range(self.game_map.height):
             for x in range(self.game_map.width):
-                tile = self.game_map.get_tile(x, y)
+                position = Vector2(y, x)
+                tile = self.game_map.get_tile(position)
                 if tile:
                     context.tiles.append(
                         TileRenderData(
-                            x=x,
-                            y=y,
+                            position=position,
                             terrain_type=tile.terrain_type.name.lower(),
                             elevation=tile.elevation,
                         )
@@ -171,7 +171,7 @@ class RenderBuilder:
         for pos in self.state.movement_range:
             context.overlays.append(
                 OverlayTileRenderData(
-                    x=pos[0], y=pos[1], overlay_type="movement", opacity=0.5
+                    position=pos, overlay_type="movement", opacity=0.5
                 )
             )
     
@@ -186,7 +186,7 @@ class RenderBuilder:
             if pos not in self.state.aoe_tiles and pos != self.state.selected_target:
                 context.attack_targets.append(
                     AttackTargetRenderData(
-                        x=pos[0], y=pos[1], target_type="range", blink_phase=blink_phase
+                        position=pos, target_type="range", blink_phase=blink_phase
                     )
                 )
         
@@ -196,8 +196,7 @@ class RenderBuilder:
                 # Selected tile gets special treatment
                 context.attack_targets.append(
                     AttackTargetRenderData(
-                        x=pos[0],
-                        y=pos[1],
+                        position=pos,
                         target_type="selected",
                         blink_phase=blink_phase,
                     )
@@ -206,7 +205,7 @@ class RenderBuilder:
                 # Other AOE tiles
                 context.attack_targets.append(
                     AttackTargetRenderData(
-                        x=pos[0], y=pos[1], target_type="aoe", blink_phase=blink_phase
+                        position=pos, target_type="aoe", blink_phase=blink_phase
                     )
                 )
     
@@ -231,17 +230,17 @@ class RenderBuilder:
     def _add_cursor_to_context(self, context: RenderContext) -> None:
         """Add cursor to the render context."""
         # Always set cursor position (for panels to read)
-        context.cursor_x = self.state.cursor_x
-        context.cursor_y = self.state.cursor_y
+        context.cursor_x = self.state.cursor_position.x
+        context.cursor_y = self.state.cursor_position.y
         
         # Add cursor with blinking effect (only visible when blinking on)
         if self._is_cursor_visible():
             context.cursor = CursorRenderData(
-                x=self.state.cursor_x, y=self.state.cursor_y, cursor_type="default"
+                position=self.state.cursor_position, cursor_type="default"
             )
     
     def _add_action_menu(
-        self, context: RenderContext, screen_width: int, screen_height: int
+        self, context: RenderContext, screen_width: int, _screen_height: int
     ) -> None:
         """Add action menu if active."""
         if not self.state.is_action_menu_open():
@@ -274,12 +273,12 @@ class RenderBuilder:
         )
     
     def _add_status_text(
-        self, context: RenderContext, screen_width: int, screen_height: int
+        self, context: RenderContext, _screen_width: int, screen_height: int
     ) -> None:
         """Add status bar text."""
         status_text = f"Turn {self.state.current_turn} | "
         status_text += f"Phase: {self.state.battle_phase.name} | "
-        status_text += f"Cursor: ({self.state.cursor_x}, {self.state.cursor_y}) | "
+        status_text += f"Cursor: ({self.state.cursor_position.x}, {self.state.cursor_position.y}) | "
         status_text += "[Q]uit [Z]Confirm [X]Cancel"
         
         context.texts.append(

@@ -13,6 +13,7 @@ from ..core.game_enums import Team
 from ..core.game_state import BattlePhase, GamePhase, GameState
 from ..core.game_view import GameView
 from ..core.input import InputType
+from ..core.data_structures import Vector2
 from ..core.renderer import Renderer
 from .combat_manager import CombatManager
 from .input_handler import InputHandler
@@ -362,20 +363,17 @@ class Game:
         """Position the cursor on the first available player unit."""
         if not self.game_map:
             # Fallback to default position
-            self.state.cursor_x = 2
-            self.state.cursor_y = 2
+            self.state.cursor_position = Vector2(2, 2)
             return
         
         player_units = self.game_map.get_units_by_team(Team.PLAYER)
         if player_units:
             # Position cursor on first player unit
             first_unit = player_units[0]
-            self.state.cursor_x = first_unit.x
-            self.state.cursor_y = first_unit.y
+            self.state.cursor_position = first_unit.position
         else:
             # Fallback to default position if no player units found
-            self.state.cursor_x = 2
-            self.state.cursor_y = 2
+            self.state.cursor_position = Vector2(2, 2)
     
     def _position_cursor_on_next_player_unit(self) -> None:
         """Position cursor on the next available player unit after completing an action."""
@@ -388,13 +386,12 @@ class Game:
             if player_units:
                 # Position on first available player unit
                 next_unit = player_units[0]
-                self.state.cursor_x = next_unit.x
-                self.state.cursor_y = next_unit.y
+                self.state.cursor_position = next_unit.position
             return
         
         # Find a different unit than the one currently at cursor position
         current_unit_at_cursor = self.game_map.get_unit_at(
-            self.state.cursor_x, self.state.cursor_y
+            self.state.cursor_position
         )
         current_unit_id = (
             current_unit_at_cursor.unit_id if current_unit_at_cursor else None
@@ -427,8 +424,7 @@ class Game:
         if next_unit_id:
             next_unit = self.game_map.get_unit(next_unit_id)
             if next_unit:
-                self.state.cursor_x = next_unit.x
-                self.state.cursor_y = next_unit.y
+                self.state.cursor_position = next_unit.position
     
     def _initialize_objective_system(self) -> None:
         """Initialize the event-driven objective system for the current scenario."""

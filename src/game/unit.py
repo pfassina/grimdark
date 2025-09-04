@@ -8,6 +8,7 @@ compatibility.
 from typing import Optional
 
 from ..core.game_enums import UnitClass, Team
+from ..core.data_structures import Vector2
 from .unit_templates import create_unit_entity
 from .components import (
     ActorComponent, HealthComponent, MovementComponent, 
@@ -44,19 +45,18 @@ class Unit:
         unit.actor.get_class_name()  # "Knight"
     """
     
-    def __init__(self, name: str, unit_class: UnitClass, team: Team, x: int, y: int, unit_id: Optional[str] = None):
+    def __init__(self, name: str, unit_class: UnitClass, team: Team, position: Vector2, unit_id: Optional[str] = None):
         """Initialize unit using component system.
         
         Args:
             name: Display name
             unit_class: Unit class enum
             team: Team affiliation
-            x: Initial x position
-            y: Initial y position
+            position: Initial position vector
             unit_id: Optional custom unit ID (for backward compatibility)
         """
         # Create entity with all components
-        self.entity = create_unit_entity(name, unit_class, team, x, y)
+        self.entity = create_unit_entity(name, unit_class, team, position)
         
         # Override entity ID if provided (for backward compatibility)
         if unit_id is not None:
@@ -80,14 +80,9 @@ class Unit:
         return self.entity.entity_id
     
     @property
-    def x(self) -> int:
-        """Get x position."""
-        return self._movement.x
-    
-    @property
-    def y(self) -> int:
-        """Get y position."""
-        return self._movement.y
+    def position(self) -> Vector2:
+        """Get position vector."""
+        return self._movement.position
     
     @property
     def facing(self) -> str:
@@ -202,9 +197,9 @@ class Unit:
     
     # ============== Methods (delegate to components) ==============
     
-    def move_to(self, x: int, y: int) -> None:
+    def move_to(self, position: Vector2) -> None:
         """Move to new position."""
-        self.movement.move_to(x, y)
+        self.movement.move_to(position)
         self.status.mark_moved()
     
     def take_damage(self, damage: int) -> None:
@@ -227,9 +222,9 @@ class Unit:
         """Calculate damage to target."""
         return self.combat.calculate_damage_to(target.combat)
     
-    def can_attack(self, target_x: int, target_y: int) -> bool:
+    def can_attack(self, target: Vector2) -> bool:
         """Check if can attack position."""
         # Need to check status as well for backward compatibility
         if not self.status.can_act():
             return False
-        return self.combat.can_attack(target_x, target_y)
+        return self.combat.can_attack(target)

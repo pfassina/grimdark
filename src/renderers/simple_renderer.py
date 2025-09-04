@@ -101,8 +101,8 @@ class SimpleRenderer(Renderer):
         vw = self.config.width
         vh = self.config.height - 3
         
-        screen_x = item.x - vx
-        screen_y = item.y - vy
+        screen_x = item.position.x - vx
+        screen_y = item.position.y - vy
         
         if 0 <= screen_x < vw and 0 <= screen_y < vh:
             if isinstance(item, TileRenderData):

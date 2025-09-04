@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from typing import Union, TYPE_CHECKING
 
 from ..core.game_enums import UnitClass
+from ..core.data_structures import Vector2
 
 if TYPE_CHECKING:
     from ..core.game_enums import Team
@@ -100,15 +101,14 @@ def get_template(unit_class: UnitClass) -> ComponentTemplate:
     return UNIT_TEMPLATES[unit_class]
 
 
-def create_unit_entity(name: str, unit_class: UnitClass, team: "Team", x: int, y: int) -> "Entity":
+def create_unit_entity(name: str, unit_class: UnitClass, team: "Team", position: Vector2) -> "Entity":
     """Create a complete unit entity with all components from a template.
     
     Args:
         name: Display name for the unit
         unit_class: Unit class enum
         team: Team affiliation 
-        x: Initial x position
-        y: Initial y position
+        position: Initial position vector
         
     Returns:
         Entity with all 5 core components configured according to class template
@@ -128,7 +128,7 @@ def create_unit_entity(name: str, unit_class: UnitClass, team: "Team", x: int, y
     # Add all 5 core components using template values
     entity.add_component(ActorComponent(entity, name, unit_class, team))
     entity.add_component(HealthComponent(entity, **template.health))
-    entity.add_component(MovementComponent(entity, x, y, **template.movement))
+    entity.add_component(MovementComponent(entity, position, **template.movement))
     
     # For combat component, ensure proper types
     combat_params = template.combat.copy()

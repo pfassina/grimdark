@@ -140,7 +140,7 @@ units:
   - name: "Hero"
     class: KNIGHT
     team: PLAYER
-    position: [x, y]
+    position: [y, x]
 objectives:
   victory:
     - type: defeat_all_enemies

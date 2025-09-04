@@ -10,6 +10,7 @@ from src.core.events import (
 )
 from src.core.game_view import GameView
 from src.core.game_enums import Team, ObjectiveStatus
+from src.core.data_structures import Vector2
 from src.game.objective_manager import ObjectiveManager
 from src.game.objectives import (
     DefeatAllEnemiesObjective, SurviveTurnsObjective, ReachPositionObjective, 
@@ -255,7 +256,7 @@ def test_game_view_adapter():
     game_view = GameView(game_map)
     
     # Test unit retrieval
-    unit_at_pos = game_view.get_unit_at(1, 1)
+    unit_at_pos = game_view.get_unit_at(Vector2(1, 1))
     assert unit_at_pos is not None
     assert unit_at_pos.name == "Hero"
     assert unit_at_pos.team == Team.PLAYER

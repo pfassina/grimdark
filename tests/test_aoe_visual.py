@@ -13,6 +13,7 @@ sys.path.insert(0, str(project_root))
 from src.game.map import GameMap  # noqa: E402
 from src.game.unit import Unit  # noqa: E402
 from src.core.game_enums import UnitClass, Team  # noqa: E402
+from src.core.data_structures import Vector2  # noqa: E402
 from src.core.game_state import GameState, GamePhase, BattlePhase  # noqa: E402
 from src.core.renderable import RenderContext, AttackTargetRenderData  # noqa: E402
 from src.renderers.simple_renderer import SimpleRenderer  # noqa: E402
@@ -112,16 +113,15 @@ def main():
             from src.core.renderable import TileRenderData
             for y in range(game_map.height):
                 for x in range(game_map.width):
-                    tile = game_map.get_tile(x, y)
+                    tile = game_map.get_tile(Vector2(y, x))
                     if tile is not None:
-                        context.tiles.append(TileRenderData(x, y, tile.terrain_type.name, 1))
+                        context.tiles.append(TileRenderData(position=Vector2(y, x), terrain_type=tile.terrain_type.name, layer=1))
             
             # Add units
             from src.core.renderable import UnitRenderData
             for unit in game_map.units.values():
                 context.units.append(UnitRenderData(
-                    x=unit.x,
-                    y=unit.y,
+                    position=unit.position,
                     unit_type=unit.actor.unit_class.name,
                     team=unit.actor.team.value,  # Convert enum to int
                     hp_current=unit.health.hp_current,
@@ -130,7 +130,7 @@ def main():
             
             # Add cursor
             from src.core.renderable import CursorRenderData
-            context.cursor = CursorRenderData(state.cursor_x, state.cursor_y)
+            context.cursor = CursorRenderData(position=Vector2(state.cursor_y, state.cursor_x))
             
             # Add attack targeting overlay
             # Range tiles

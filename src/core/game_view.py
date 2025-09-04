@@ -14,6 +14,7 @@ from typing import Optional, Iterable, TYPE_CHECKING
 from dataclasses import dataclass
 
 from .game_enums import Team
+from .data_structures import Vector2
 
 if TYPE_CHECKING:
     from ..game.map import GameMap
@@ -29,7 +30,7 @@ class UnitView:
     """
     name: str
     team: Team
-    position: tuple[int, int]
+    position: Vector2
     is_alive: bool
     can_move: bool
     can_act: bool
@@ -52,17 +53,16 @@ class GameView:
         """
         self._game_map = game_map
     
-    def get_unit_at(self, x: int, y: int) -> Optional[UnitView]:
-        """Get unit at specific coordinates.
+    def get_unit_at(self, position: Vector2) -> Optional[UnitView]:
+        """Get unit at specific position.
         
         Args:
-            x: X coordinate
-            y: Y coordinate
+            position: Position to check
             
         Returns:
             UnitView if unit exists at position, None otherwise
         """
-        unit = self._game_map.get_unit_at(x, y)
+        unit = self._game_map.get_unit_at(position)
         return self._unit_to_view(unit) if unit else None
     
     def get_unit_by_name(self, name: str) -> Optional[UnitView]:
@@ -121,17 +121,16 @@ class GameView:
         """
         return (self._game_map.width, self._game_map.height)
     
-    def is_valid_position(self, x: int, y: int) -> bool:
-        """Check if coordinates are within map bounds.
+    def is_valid_position(self, position: Vector2) -> bool:
+        """Check if position is within map bounds.
         
         Args:
-            x: X coordinate
-            y: Y coordinate
+            position: Position to check
             
         Returns:
             True if position is valid
         """
-        return self._game_map.is_valid_position(x, y)
+        return self._game_map.is_valid_position(position)
     
     def _unit_to_view(self, unit: "Unit") -> UnitView:
         """Convert Unit to UnitView.
@@ -145,7 +144,7 @@ class GameView:
         return UnitView(
             name=unit.name,
             team=unit.team,
-            position=(unit.x, unit.y),
+            position=unit.position,
             is_alive=unit.is_alive,
             can_move=unit.can_move,
             can_act=unit.can_act,

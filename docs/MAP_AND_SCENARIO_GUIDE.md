@@ -303,7 +303,7 @@ placements:
 #### Placement Precedence
 
 Each unit/object must use exactly ONE placement method:
-1. `at: [x, y]` - Direct coordinates
+1. `at: [y, x]` - Direct coordinates
 2. `at_marker: NAME` - Named marker position  
 3. `at_region: NAME` - Region-based with placement policy
 

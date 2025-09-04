@@ -6,6 +6,8 @@ separate from combat targeting and UI concerns.
 """
 from typing import TYPE_CHECKING
 
+from ..core.data_structures import Vector2
+
 if TYPE_CHECKING:
     from .map import GameMap
     from .unit import Unit
@@ -34,7 +36,7 @@ class CombatResolver:
     def execute_aoe_attack(
         self, 
         attacker: "Unit", 
-        center_pos: tuple[int, int], 
+        center_pos: Vector2, 
         aoe_pattern: str
     ) -> CombatResult:
         """
@@ -54,8 +56,8 @@ class CombatResolver:
         aoe_tiles = self.game_map.calculate_aoe_tiles(center_pos, aoe_pattern)
         
         # Find all targets in AOE area (both enemy and friendly)
-        for tile_x, tile_y in aoe_tiles:
-            target = self.game_map.get_unit_at(tile_x, tile_y)
+        for position in aoe_tiles:
+            target = self.game_map.get_unit_at(position)
             if target and target.unit_id != attacker.unit_id:
                 result.targets_hit.append(target)
                 
@@ -106,10 +108,10 @@ class CombatResolver:
             
             # Check if target is defeated
             if target.hp_current <= 0:
-                target_pos = (target.x, target.y)
+                target_pos = target.position
                 self.game_map.remove_unit(target.unit_id)
                 result.defeated_targets.append(target.name)
-                result.defeated_positions[target.name] = target_pos
+                result.defeated_positions[target.name] = (target_pos.x, target_pos.y)
                 print(f"{attacker.name} defeats {target.name}!")
             else:
                 print(f"{attacker.name} attacks {target.name} for {damage} damage!")

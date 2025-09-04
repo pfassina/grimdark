@@ -7,6 +7,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 from src.game.map import GameMap
 from src.core.game_enums import TerrainType
+from src.core.data_structures import Vector2
 
 def test_map_loading():
     # Test loading from CSV directory
@@ -15,15 +16,15 @@ def test_map_loading():
     print(f"Loaded map: {game_map.width}x{game_map.height}")
     
     # Check some specific tiles from fortress map
-    tile = game_map.get_tile(0, 0)
+    tile = game_map.get_tile(Vector2(0, 0))
     assert tile is not None and tile.terrain_type == TerrainType.WALL
-    tile = game_map.get_tile(1, 1)
+    tile = game_map.get_tile(Vector2(1, 1))
     assert tile is not None and tile.terrain_type == TerrainType.PLAIN
-    tile = game_map.get_tile(2, 2)
+    tile = game_map.get_tile(Vector2(2, 2))
     assert tile is not None and tile.terrain_type == TerrainType.FOREST
-    tile = game_map.get_tile(6, 5)
+    tile = game_map.get_tile(Vector2(5, 6))
     assert tile is not None and tile.terrain_type == TerrainType.BRIDGE
-    tile = game_map.get_tile(7, 9)
+    tile = game_map.get_tile(Vector2(9, 7))
     assert tile is not None and tile.terrain_type == TerrainType.FORT
     
     print("Map loaded successfully!")

@@ -274,11 +274,11 @@ class InputHandler:
     def _cycle_selectable_units(self) -> None:
         """Cycle through selectable player units."""
         # Get all selectable units if not already set
-        if not self.state.selectable_units:
+        if not self.state.battle.selectable_units:
             self._refresh_selectable_units()
         
         # Cycle to next unit
-        next_unit_id = self.state.cycle_selectable_units()
+        next_unit_id = self.state.battle.cycle_selectable_units()
         if next_unit_id:
             unit = self.game_map.get_unit(next_unit_id)
             if unit:
@@ -290,7 +290,7 @@ class InputHandler:
         selectable_ids = [
             unit.unit_id for unit in player_units if unit.can_move or unit.can_act
         ]
-        self.state.set_selectable_units(selectable_ids)
+        self.state.battle.set_selectable_units(selectable_ids)
     
     def handle_action_menu_input(self, event: InputEvent) -> None:
         """Handle input while action menu is open."""
@@ -361,7 +361,7 @@ class InputHandler:
     def handle_forecast_input(self, event: InputEvent) -> None:
         """Handle input while battle forecast is active."""
         if event.event_type == InputType.KEY_PRESS:
-            self.state.stop_forecast()
+            self.state.ui.stop_forecast()
     
     # Direct action key handlers
     def handle_objectives_key(self) -> None:

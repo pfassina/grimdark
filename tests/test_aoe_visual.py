@@ -130,27 +130,27 @@ def main():
             
             # Add cursor
             from src.core.renderable import CursorRenderData
-            context.cursor = CursorRenderData(position=Vector2(state.cursor_y, state.cursor_x))
+            context.cursor = CursorRenderData(position=state.cursor.position)
             
             # Add attack targeting overlay
             # Range tiles
-            for pos in state.attack_range:
-                if pos != state.selected_target and pos not in state.aoe_tiles:
+            for pos in state.battle.attack_range:
+                if pos != state.battle.selected_target and pos not in state.battle.aoe_tiles:
                     context.attack_targets.append(AttackTargetRenderData(
                         x=pos[0], y=pos[1], target_type="range", blink_phase=blink_phase
                     ))
             
             # AOE tiles
-            for pos in state.aoe_tiles:
-                if pos != state.selected_target:
+            for pos in state.battle.aoe_tiles:
+                if pos != state.battle.selected_target:
                     context.attack_targets.append(AttackTargetRenderData(
                         x=pos[0], y=pos[1], target_type="aoe", blink_phase=blink_phase
                     ))
             
             # Selected target
-            if state.selected_target:
+            if state.battle.selected_target:
                 context.attack_targets.append(AttackTargetRenderData(
-                    x=state.selected_target[0], y=state.selected_target[1], 
+                    x=state.battle.selected_target[0], y=state.battle.selected_target[1], 
                     target_type="selected", blink_phase=blink_phase
                 ))
             

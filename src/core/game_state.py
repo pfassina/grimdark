@@ -289,26 +289,6 @@ class GameState:
     state_data: dict[str, Any] = field(default_factory=dict)
 
     # ------------------------------------------------------------------
-    # Compatibility helpers
-    # ------------------------------------------------------------------
-    def __getattr__(self, name: str) -> Any:  # pragma: no cover - simple delegation
-        for sub in (self.battle, self.ui, self.cursor):
-            if hasattr(sub, name):
-                return getattr(sub, name)
-        raise AttributeError(name)
-
-    def __setattr__(self, name: str, value: Any) -> None:  # pragma: no cover
-        if name in {"phase", "battle", "ui", "cursor", "state_data"}:
-            super().__setattr__(name, value)
-            return
-        for sub_name in ("battle", "ui", "cursor"):
-            sub = self.__dict__.get(sub_name)
-            if sub is not None and hasattr(sub, name):
-                setattr(sub, name, value)
-                return
-        super().__setattr__(name, value)
-
-    # ------------------------------------------------------------------
     # Convenience methods operating across substates
     # ------------------------------------------------------------------
     def reset_selection(self) -> None:

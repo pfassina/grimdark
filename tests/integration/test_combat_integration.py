@@ -477,8 +477,8 @@ class TestEndToEndCombat:
         combat_manager = CombatManager(game_map, game_state)
         
         # Get all units
-        player_units = [u for u in game_map.units.values() if u.team == Team.PLAYER]
-        enemy_units = [u for u in game_map.units.values() if u.team == Team.ENEMY]
+        player_units = [u for u in game_map.units if u is not None and u.team == Team.PLAYER]
+        enemy_units = [u for u in game_map.units if u is not None and u.team == Team.ENEMY]
         
         assert len(player_units) == 2
         assert len(enemy_units) == 2

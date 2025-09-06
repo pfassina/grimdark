@@ -170,8 +170,8 @@ class TestAOEAttacks:
         
         resolver = CombatResolver(game_map)
         mage = None
-        for unit in game_map.units.values():
-            if unit.name == "Mage":
+        for unit in game_map.units:
+            if unit is not None and unit.name == "Mage":
                 mage = unit
                 break
         

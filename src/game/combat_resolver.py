@@ -6,6 +6,8 @@ separate from combat targeting and UI concerns.
 """
 from typing import TYPE_CHECKING
 
+import numpy as np
+
 from ..core.data_structures import Vector2
 
 if TYPE_CHECKING:
@@ -40,7 +42,7 @@ class CombatResolver:
         aoe_pattern: str
     ) -> CombatResult:
         """
-        Execute AOE attack centered on target position.
+        Execute AOE attack centered on target position using vectorized operations.
         
         Args:
             attacker: The unit performing the attack
@@ -55,18 +57,18 @@ class CombatResolver:
         # Calculate AOE tiles based on center position
         aoe_tiles = self.game_map.calculate_aoe_tiles(center_pos, aoe_pattern)
         
-        # Find all targets in AOE area (both enemy and friendly)
-        for position in aoe_tiles:
-            target = self.game_map.get_unit_at(position)
-            if target and target.unit_id != attacker.unit_id:
-                result.targets_hit.append(target)
-                
-                # Check if target is on the same team as attacker (friendly fire)
-                if target.team == attacker.team:
-                    result.friendly_fire = True
+        # Find all targets in AOE area using vectorized operations
+        targets_in_aoe = self.game_map.get_units_in_positions(aoe_tiles)
         
-        # Apply damage to all targets
+        # Filter out the attacker and build target list
+        result.targets_hit = [t for t in targets_in_aoe if t.unit_id != attacker.unit_id]
+        
+        # Vectorized friendly fire detection using team comparison
         if result.targets_hit:
+            target_teams = np.array([t.team.value for t in result.targets_hit], dtype=np.int8)
+            result.friendly_fire = bool(np.any(target_teams == attacker.team.value))
+            
+            # Apply damage to all targets
             self._apply_damage_to_targets(attacker, result)
             
         return result
@@ -97,24 +99,48 @@ class CombatResolver:
         return result
     
     def _apply_damage_to_targets(self, attacker: "Unit", result: CombatResult) -> None:
-        """Apply damage to all targets and handle defeats."""
-        for target in result.targets_hit:
-            # Calculate damage (simple calculation)
-            damage = max(1, attacker.combat.strength - target.combat.defense // 2)
-            result.damage_dealt[target.name] = damage
+        """Apply damage to all targets and handle defeats using vectorized operations."""
+        if not result.targets_hit:
+            return
             
-            # Apply damage
-            target.hp_current = max(0, target.hp_current - damage)
-            
-            # Check if target is defeated
-            if target.hp_current <= 0:
-                target_pos = target.position
-                self.game_map.remove_unit(target.unit_id)
+        # Vectorized damage calculation for all targets
+        target_defenses = np.array([t.combat.defense for t in result.targets_hit], dtype=np.int16)
+        damages = np.maximum(1, attacker.combat.strength - target_defenses // 2)
+        
+        # Vectorized HP updates
+        current_hps = np.array([t.hp_current for t in result.targets_hit], dtype=np.int16)
+        new_hps = np.maximum(0, current_hps - damages)
+        
+        # Boolean mask for defeated units
+        defeated_mask = new_hps <= 0
+        surviving_mask = ~defeated_mask
+        
+        # Process surviving units first (batch HP update)
+        surviving_indices = np.where(surviving_mask)[0]
+        for idx in surviving_indices:
+            target = result.targets_hit[idx]
+            damage = damages[idx]
+            target.hp_current = new_hps[idx]
+            result.damage_dealt[target.name] = int(damage)
+            print(f"{attacker.name} attacks {target.name} for {damage} damage!")
+        
+        # Process defeated units in batch
+        defeated_indices = np.where(defeated_mask)[0]
+        if len(defeated_indices) > 0:
+            # Collect all defeated unit info before removal
+            defeated_unit_ids = []
+            for idx in defeated_indices:
+                target = result.targets_hit[idx]
+                damage = damages[idx]
+                target.hp_current = 0  # Ensure HP is 0
+                result.damage_dealt[target.name] = int(damage)
                 result.defeated_targets.append(target.name)
-                result.defeated_positions[target.name] = (target_pos.x, target_pos.y)
+                result.defeated_positions[target.name] = (target.position.x, target.position.y)
+                defeated_unit_ids.append(target.unit_id)
                 print(f"{attacker.name} defeats {target.name}!")
-            else:
-                print(f"{attacker.name} attacks {target.name} for {damage} damage!")
+            
+            # Batch remove all defeated units in a single operation
+            self.game_map.remove_units_batch(defeated_unit_ids)
         
         # Show summary if multiple targets
         if len(result.targets_hit) > 1:

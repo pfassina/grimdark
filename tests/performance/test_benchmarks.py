@@ -524,7 +524,7 @@ class TestPerformanceRegression:
             results = []
             
             # Test 20 units
-            test_units = list(game_map.units.values())[:20]
+            test_units = [unit for unit in game_map.units if unit is not None][:20]
             
             for unit in test_units:
                 movement = game_map.calculate_movement_range(unit)

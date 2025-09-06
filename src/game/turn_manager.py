@@ -131,8 +131,8 @@ class TurnManager:
         """Reset all unit statuses for the specified team at the start of their turn."""
         team_enum = Team(team)
         
-        for unit in self.game_map.units.values():
-            if unit.team == team_enum and unit.is_alive:
+        for unit in self.game_map.units:
+            if unit is not None and unit.team == team_enum and unit.is_alive:
                 unit.start_turn()  # Reset has_moved and has_acted flags
     
     def show_phase_banner(self, team: int) -> None:

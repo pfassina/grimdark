@@ -8,7 +8,6 @@ configurations and reporting.
 import sys
 import argparse
 import subprocess
-from pathlib import Path
 
 
 def run_command(cmd: list, description: str):

@@ -216,8 +216,8 @@ class UIManager:
         
         # Build unit position map for quick lookup
         unit_map = {}
-        for unit in self.game_map.units.values():
-            if unit.is_alive:
+        for unit in self.game_map.units:
+            if unit is not None and unit.is_alive:
                 unit_map[(unit.position.x, unit.position.y)] = unit.team.value
         
         # Build minimap content

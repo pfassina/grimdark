@@ -383,10 +383,10 @@ class TestCombatManagerIntegration:
         # Get the units
         hero = None
         enemy = None
-        for unit in game_map.units.values():
-            if unit.team == Team.PLAYER:
+        for unit in game_map.units:
+            if unit is not None and unit.team == Team.PLAYER:
                 hero = unit
-            elif unit.team == Team.ENEMY:
+            elif unit is not None and unit.team == Team.ENEMY:
                 enemy = unit
         
         assert hero is not None

@@ -487,7 +487,7 @@ class TestMemoryAndResourceEdgeCases:
         assert len(game_map.units) == unit_count
         
         # Should still function
-        test_unit = list(game_map.units.values())[0]
+        test_unit = next(unit for unit in game_map.units if unit is not None)
         movement_range = game_map.calculate_movement_range(test_unit)
         assert isinstance(movement_range, VectorArray)
     
@@ -516,11 +516,12 @@ class TestMemoryAndResourceEdgeCases:
         assert len(game_map.units) == 50
         
         # Remove all units
-        unit_names = list(game_map.units.keys())
+        unit_names = [unit.unit_id for unit in game_map.units if unit is not None]
         for name in unit_names:
             game_map.remove_unit(name)
         
-        assert len(game_map.units) == 0
+        # Check that all units are removed (should be None entries)
+        assert all(unit is None for unit in game_map.units)
         
         # Map should still function normally
         new_unit = TestDataBuilder.unit("New Unit", UnitClass.MAGE, Team.PLAYER, Vector2(5, 5))

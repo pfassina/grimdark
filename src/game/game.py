@@ -140,6 +140,7 @@ class Game:
         if self.input_handler:
             self.input_handler.on_quit = self._handle_quit
             self.input_handler.on_end_unit_turn = self._handle_end_unit_turn
+            self.input_handler.on_end_team_turn = self._handle_end_team_turn
             self.input_handler.on_load_selected_scenario = self.load_selected_scenario
             self.input_handler.on_movement_preview_update = self.update_movement_preview
         
@@ -346,6 +347,11 @@ class Game:
         """Handle end of unit turn from input handler."""
         if self.turn_manager:
             self.turn_manager.end_unit_turn()
+    
+    def _handle_end_team_turn(self) -> None:
+        """Handle end of team turn from input handler."""
+        if self.turn_manager:
+            self.turn_manager.end_player_turn()
     
     # Unit management helpers
     def _refresh_selectable_units(self) -> None:

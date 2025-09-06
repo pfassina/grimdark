@@ -40,6 +40,7 @@ class InputHandler:
         # Callbacks that will be set by the main Game class
         self.on_quit: Optional[Callable] = None
         self.on_end_unit_turn: Optional[Callable] = None
+        self.on_end_team_turn: Optional[Callable] = None
         self.on_load_selected_scenario: Optional[Callable] = None
         self.on_movement_preview_update: Optional[Callable] = None
         
@@ -346,8 +347,8 @@ class InputHandler:
         """Handle dialog confirmation based on dialog type."""
         if self.state.ui.active_dialog == "confirm_end_turn":
             if self.state.ui.get_dialog_selection() == 0:  # Yes
-                if self.on_end_unit_turn:
-                    self.on_end_unit_turn()
+                if self.on_end_team_turn:
+                    self.on_end_team_turn()
         elif self.state.ui.active_dialog == "confirm_friendly_fire":
             if (
                 self.state.ui.get_dialog_selection() == 0  # Yes - proceed with attack

@@ -33,14 +33,10 @@ The system uses a **push-based, data-driven rendering architecture** where:
 ### Renderer Implementations (`src/renderers/`)
 - **`terminal_renderer.py`**: Interactive terminal-based renderer
 - **`simple_renderer.py`**: Demo renderer for testing
-- Easy to add: pygame, raylib, or any other renderer
 
 ## Quick Start
 
 ```bash
-# Run the architecture test
-python tests/test_architecture.py
-
 # Run demo with auto-playing simple renderer (uses default scenario)
 python demos/demo.py
 
@@ -75,37 +71,6 @@ renderer.render_frame(context)  # Terminal shows "F" and "@"
                                 # Web could show SVG
 ```
 
-## Adding a New Renderer
-
-Create a class that inherits from `Renderer` and implement:
-
-```python
-class MyRenderer(Renderer):
-    def initialize(self): 
-        # Setup your rendering system
-    
-    def render_frame(self, context: RenderContext):
-        # Draw tiles, units, UI from context
-    
-    def get_input_events(self) -> List[InputEvent]:
-        # Convert your input to generic events
-    
-    def cleanup(self):
-        # Clean up resources
-```
-
-## Features
-
-- **Grid-based tactical combat**: Movement ranges, attack ranges, terrain effects
-- **Turn-based gameplay**: Player phase, enemy phase, unit actions
-- **Scenario system**: YAML-based scenarios with victory/defeat objectives
-- **Map loading**: Load maps from txt files with terrain symbols
-- **Layered rendering**: Terrain, units, overlays, UI all on separate layers
-- **Flexible unit system**: Classes, stats, teams, HP tracking
-- **Smart camera**: Follows cursor with viewport management
-- **Terrain effects**: Movement costs, defense bonuses, vision blocking
-- **Victory conditions**: Defeat enemies, survive turns, reach positions, protect units
-
 ## Game Controls (Terminal Version)
 
 - **Arrow Keys/WASD**: Move cursor
@@ -113,22 +78,9 @@ class MyRenderer(Renderer):
 - **X/Escape**: Cancel/Back
 - **Q**: Quit game
 
-## Architecture Benefits
-
-✓ **Complete Separation**: Change renderers without touching game code  
-✓ **Testable**: Game logic can run without any renderer  
-✓ **Extensible**: Easy to add new features to either side  
-✓ **Portable**: Could run on terminal, desktop, web, or mobile  
-✓ **Clear Contracts**: Well-defined interfaces between systems  
-
 ## Scenario System
 
 The game supports YAML-based scenarios that define maps, unit placement, and objectives:
-
-### Available Scenarios
-- **Tutorial** (`assets/scenarios/tutorial.yaml`) - Simple 1v1 combat introduction
-- **Fortress Defense** (`assets/scenarios/fortress_defense.yaml`) - Defend against siege for 10 turns
-- **The Great Escape** (`assets/scenarios/escape_mission.yaml`) - Reach escape point with time limit
 
 ### Creating Scenarios
 Create YAML files in `assets/scenarios/` directory with:
@@ -147,22 +99,6 @@ objectives:
   defeat:
     - type: all_units_defeated
 ```
-
-### Objective Types
-- **Victory**: `defeat_all_enemies`, `survive_turns`, `reach_position`, `defeat_unit`
-- **Defeat**: `all_units_defeated`, `protect_unit`, `position_captured`, `turn_limit`
-
-## Future Enhancements
-
-The architecture is ready for:
-- Save/load system
-- Network multiplayer (serialize RenderContext)
-- Replay system (record inputs)
-- AI opponents
-- Combat animations
-- Special abilities and magic
-- Inventory and equipment
-- Campaign/story mode
 
 ## Dependencies
 

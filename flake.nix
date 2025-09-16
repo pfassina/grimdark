@@ -19,6 +19,11 @@
           numpy
           pandas
           pyyaml
+          # Testing dependencies
+          pytest
+          pytest-cov
+          pytest-mock
+          pytest-benchmark
         ]);
     in {
       devShells.default = pkgs.mkShell {

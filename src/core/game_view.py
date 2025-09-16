@@ -74,7 +74,7 @@ class GameView:
         Returns:
             UnitView if unit exists and is alive, None otherwise
         """
-        for unit in self._game_map.units.values():
+        for unit in self._game_map.units:
             if unit.name == name and unit.is_alive:
                 return self._unit_to_view(unit)
         return None
@@ -89,12 +89,16 @@ class GameView:
         Returns:
             Number of units matching criteria
         """
-        count = 0
-        for unit in self._game_map.units.values():
-            if unit.team == team:
-                if not alive or unit.is_alive:
+        if alive:
+            # Use vectorized O(1) count for alive units (most common case)
+            return self._game_map.count_units_by_team(team)
+        else:
+            # For dead units, we need to iterate (rare case)
+            count = 0
+            for unit in self._game_map.units:
+                if unit.team == team and not unit.is_alive:
                     count += 1
-        return count
+            return count
     
     def iter_units(self, team: Optional[Team] = None, alive: bool = True) -> Iterable[UnitView]:
         """Iterate over units matching criteria.
@@ -106,7 +110,9 @@ class GameView:
         Yields:
             UnitView for each unit matching criteria
         """
-        for unit in self._game_map.units.values():
+        for unit in self._game_map.units:
+            if unit is None:
+                continue
             if team is not None and unit.team != team:
                 continue
             if alive and not unit.is_alive:

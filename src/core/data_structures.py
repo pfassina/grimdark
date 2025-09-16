@@ -375,19 +375,28 @@ class DataConverter:
         return unit
     
     @staticmethod
-    def units_to_render_data_list(units: dict[str, "Unit"], highlight_func=None) -> list["UnitRenderData"]:
+    def units_to_render_data_list(units, highlight_func=None) -> list["UnitRenderData"]:
         """Convert a collection of Units to a list of UnitRenderData.
         
         Args:
-            units: Dictionary of unit_id -> Unit instances
+            units: Dictionary of unit_id -> Unit instances or list of Unit instances
             highlight_func: Optional function that takes a unit and returns highlight_type
             
         Returns:
             List of UnitRenderData for all alive units
         """
         render_data = []
-        for unit in units.values():
-            if unit.is_alive:
+        
+        # Handle dict, list, and UnitCollection types
+        if isinstance(units, dict):
+            unit_collection = units.values()
+        elif hasattr(units, '__iter__'):
+            unit_collection = units
+        else:
+            unit_collection = [units]
+            
+        for unit in unit_collection:
+            if unit is not None and unit.is_alive:
                 highlight_type = highlight_func(unit) if highlight_func else None
                 render_data.append(DataConverter.unit_to_render_data(unit, highlight_type))
         return render_data

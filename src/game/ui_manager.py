@@ -57,19 +57,19 @@ class UIManager:
     # Overlay management
     def show_objectives(self) -> None:
         """Show the objectives overlay."""
-        self.state.open_overlay("objectives")
+        self.state.ui.open_overlay("objectives")
     
     def show_help(self) -> None:
         """Show the help overlay."""
-        self.state.open_overlay("help")
+        self.state.ui.open_overlay("help")
     
     def show_minimap(self) -> None:
         """Show the minimap overlay."""
-        self.state.open_overlay("minimap")
+        self.state.ui.open_overlay("minimap")
     
     def close_overlay(self) -> None:
         """Close the currently active overlay."""
-        self.state.close_overlay()
+        self.state.ui.close_overlay()
     
     # Banner management
     def show_banner(self, text: str, duration_ms: int = 2000) -> None:
@@ -122,7 +122,7 @@ class UIManager:
         if self.scenario.settings.turn_limit:
             content.append("")
             content.append(f"Turn Limit: {self.scenario.settings.turn_limit}")
-            content.append(f"Current Turn: {self.state.current_turn}")
+            content.append(f"Current Turn: {self.state.battle.current_turn}")
         
         content.append("")
         content.append("Press any key to continue...")
@@ -216,8 +216,8 @@ class UIManager:
         
         # Build unit position map for quick lookup
         unit_map = {}
-        for unit in self.game_map.units.values():
-            if unit.is_alive:
+        for unit in self.game_map.units:
+            if unit is not None and unit.is_alive:
                 unit_map[(unit.position.x, unit.position.y)] = unit.team.value
         
         # Build minimap content
@@ -238,13 +238,13 @@ class UIManager:
                 
                 # Check if this position is in the camera view
                 screen_width, screen_height = self.renderer.get_screen_size()
-                camera_left = self.state.camera_position.x
+                camera_left = self.state.cursor.camera_position.x
                 camera_right = (
-                    self.state.camera_position.x + screen_width - 28
+                    self.state.cursor.camera_position.x + screen_width - 28
                 )  # Account for sidebar
-                camera_top = self.state.camera_position.y
+                camera_top = self.state.cursor.camera_position.y
                 camera_bottom = (
-                    self.state.camera_position.y + screen_height - 3
+                    self.state.cursor.camera_position.y + screen_height - 3
                 )  # Account for status
                 
                 if (
@@ -340,7 +340,7 @@ class UIManager:
                 title="Confirm",
                 message="End Player Turn?",
                 options=["Yes", "No"],
-                selected_option=self.state.get_dialog_selection(),
+                selected_option=self.state.ui.get_dialog_selection(),
             )
         elif dialog_type == "confirm_friendly_fire":
             friendly_fire_message = self.state.state_data.get(
@@ -356,7 +356,7 @@ class UIManager:
                 title="Friendly Fire Warning",
                 message=friendly_fire_message,
                 options=["Attack Anyway", "Cancel"],
-                selected_option=self.state.get_dialog_selection(),
+                selected_option=self.state.ui.get_dialog_selection(),
             )
         
         # Default dialog
@@ -368,7 +368,7 @@ class UIManager:
             title="Confirm",
             message="Are you sure?",
             options=["Yes", "No"],
-            selected_option=self.state.get_dialog_selection(),
+            selected_option=self.state.ui.get_dialog_selection(),
         )
     
     def build_battle_forecast(self) -> BattleForecastRenderData:

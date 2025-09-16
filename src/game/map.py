@@ -4,6 +4,7 @@ import numpy as np
 import csv
 import os
 from numpy.typing import NDArray
+from collections.abc import KeysView
 
 from ..core.game_enums import TerrainType, Team
 from ..core.tileset_loader import get_tileset_config
@@ -12,12 +13,51 @@ from .tile import Tile
 from .unit import Unit
 
 
+class UnitCollection:
+    """Compatibility wrapper for units that provides dict-like interface while using list storage."""
+    
+    def __init__(self, units: list[Unit], unit_id_to_index: dict[str, int]):
+        self._units = units
+        self._unit_id_to_index = unit_id_to_index
+    
+    def __len__(self) -> int:
+        """Return number of units."""
+        return len(self._units)
+    
+    def __contains__(self, unit_id: str) -> bool:
+        """Check if unit ID exists."""
+        return unit_id in self._unit_id_to_index
+    
+    def __getitem__(self, unit_id: str) -> Unit:
+        """Get unit by ID."""
+        if unit_id not in self._unit_id_to_index:
+            raise KeyError(unit_id)
+        index = self._unit_id_to_index[unit_id]
+        return self._units[index]
+    
+    def keys(self) -> KeysView[str]:
+        """Get all unit IDs."""
+        return self._unit_id_to_index.keys()
+    
+    def values(self):
+        """Get all units."""
+        return iter(self._units)
+    
+    def __iter__(self):
+        """Iterate over all units."""
+        return iter(self._units)
+
+
 @dataclass
 class GameMap:
     width: int
     height: int
     tiles: np.ndarray = field(init=False)
-    units: dict[str, Unit] = field(default_factory=dict)
+    # Replace dict-based storage with indexed arrays for O(1) lookups
+    _units: list[Unit] = field(default_factory=list)
+    occupancy: np.ndarray = field(init=False)  # Stores unit indices (-1 for empty)
+    unit_id_to_index: dict[str, int] = field(default_factory=dict)
+    units: UnitCollection = field(init=False)
     
     def __post_init__(self):
         # Create structured array for efficient tile storage
@@ -31,6 +71,13 @@ class GameMap:
         # Initialize all tiles to PLAIN terrain with 0 elevation
         self.tiles['terrain_type'] = TerrainType.PLAIN.value
         self.tiles['elevation'] = 0
+        
+        # Initialize occupancy array: -1 = empty, >=0 = unit index
+        # Use int16 to support up to 32,767 units
+        self.occupancy = np.full((self.height, self.width), -1, dtype=np.int16)
+        
+        # Initialize compatibility wrapper
+        self.units = UnitCollection(self._units, self.unit_id_to_index)
     
     @classmethod
     def from_csv_layers(cls, map_directory: str) -> "GameMap":
@@ -173,6 +220,82 @@ class GameMap:
         positions = np.column_stack((y_coords, x_coords)).astype(np.int16)
         return VectorArray(positions)
     
+    # ============== Occupancy and Unit Mask Methods ==============
+    
+    def get_occupied_mask(self) -> NDArray[np.bool_]:
+        """Get boolean mask of all occupied positions."""
+        return self.occupancy >= 0
+    
+    def get_team_mask(self, team: Team) -> NDArray[np.bool_]:
+        """Get boolean mask of positions occupied by specific team."""
+        mask = np.zeros((self.height, self.width), dtype=np.bool_)
+        
+        # Use vectorized operations where possible
+        occupied_mask = self.get_occupied_mask()
+        y_coords, x_coords = np.where(occupied_mask)
+        
+        for y, x in zip(y_coords, x_coords):
+            unit_index = self.occupancy[y, x]
+            unit = self._units[unit_index]
+            if unit is not None and unit.is_alive and unit.team == team:
+                mask[y, x] = True
+        
+        return mask
+    
+    def get_enemy_mask(self, team: Team) -> NDArray[np.bool_]:
+        """Get boolean mask of positions occupied by enemies of specified team."""
+        mask = np.zeros((self.height, self.width), dtype=np.bool_)
+        
+        occupied_mask = self.get_occupied_mask()
+        y_coords, x_coords = np.where(occupied_mask)
+        
+        for y, x in zip(y_coords, x_coords):
+            unit_index = self.occupancy[y, x]
+            unit = self._units[unit_index]
+            if unit is not None and unit.is_alive and unit.team != team:
+                mask[y, x] = True
+        
+        return mask
+    
+    def get_blocking_mask(self, team: Team) -> NDArray[np.bool_]:
+        """Get boolean mask combining terrain and enemy unit blocking for pathfinding."""
+        # Get terrain blocking
+        terrain_types = self.tiles['terrain_type']
+        
+        # Import terrain data
+        from ..core.game_info import TERRAIN_DATA
+        max_terrain_value = max(terrain.value for terrain in TerrainType)
+        blocks_movement = np.zeros(max_terrain_value + 1, dtype=np.bool_)
+        
+        for terrain_type in TerrainType:
+            terrain_info = TERRAIN_DATA[terrain_type]
+            blocks_movement[terrain_type.value] = terrain_info.blocks_movement
+        
+        terrain_blocking = blocks_movement[terrain_types]
+        
+        # Get enemy unit blocking
+        enemy_blocking = self.get_enemy_mask(team)
+        
+        # Combine both types of blocking
+        return terrain_blocking | enemy_blocking
+    
+    def is_position_blocked(self, position: Vector2, team: Team) -> bool:
+        """Check if position is blocked by terrain or enemy units."""
+        if not self.is_valid_position(position):
+            return True
+        
+        # Check terrain blocking
+        terrain_type = self.get_terrain_type(position)
+        if terrain_type and self.is_terrain_blocking(terrain_type):
+            return True
+        
+        # Check unit blocking
+        unit = self.get_unit_at(position)
+        if unit and unit.team != team:
+            return True
+        
+        return False
+    
     def is_terrain_blocking(self, terrain_type: TerrainType) -> bool:
         """Check if terrain type blocks movement using direct lookup."""
         from ..core.game_info import TERRAIN_DATA
@@ -187,6 +310,7 @@ class GameMap:
         return 0 <= position.x < self.width and 0 <= position.y < self.height
     
     def add_unit(self, unit: Unit) -> bool:
+        """Add unit to map and return success status."""
         if not self.is_valid_position(unit.position):
             return False
         
@@ -198,25 +322,196 @@ class GameMap:
         if not terrain_type or self.is_terrain_blocking(terrain_type):
             return False
         
-        self.units[unit.unit_id] = unit
+        # Add to units list and update lookup structures
+        unit_index = len(self._units)
+        self._units.append(unit)
+        self.unit_id_to_index[unit.unit_id] = unit_index
+        
+        # Update occupancy array
+        self.occupancy[unit.position.y, unit.position.x] = unit_index
+        
         return True
     
     def remove_unit(self, unit_id: str) -> Optional[Unit]:
-        return self.units.pop(unit_id, None)
+        """Remove unit by ID and clean up all data structures."""
+        unit_index = self.unit_id_to_index.get(unit_id)
+        if unit_index is None:
+            return None
+        
+        unit = self._units[unit_index]
+        
+        # Clear occupancy array at unit's position
+        self.occupancy[unit.position.y, unit.position.x] = -1
+        
+        # Remove from index mapping
+        del self.unit_id_to_index[unit_id]
+        
+        # Remove unit and compact array to eliminate None values
+        self._units.pop(unit_index)
+        
+        # Update all indices that were shifted down
+        for uid, idx in self.unit_id_to_index.items():
+            if idx > unit_index:
+                self.unit_id_to_index[uid] = idx - 1
+        
+        # Update occupancy array to reflect new indices
+        self._reindex_occupancy_after_removal(unit_index)
+        
+        return unit
+
+    def _reindex_occupancy_after_removal(self, removed_index: int) -> None:
+        """Update occupancy array indices after unit removal and array compaction."""
+        # Find all positions that have indices greater than the removed one
+        indices_to_update = self.occupancy > removed_index
+        # Decrement them by 1 to account for the removed element
+        self.occupancy[indices_to_update] -= 1
+    
+    def remove_units_batch(self, unit_ids: list[str]) -> list[Unit]:
+        """Remove multiple units efficiently in a single batch operation.
+        
+        This method is optimized for removing multiple units at once,
+        such as when processing AOE damage that defeats multiple targets.
+        
+        Args:
+            unit_ids: List of unit IDs to remove
+            
+        Returns:
+            List of removed Unit objects
+        """
+        if not unit_ids:
+            return []
+        
+        # Collect unit indices and positions
+        indices_to_remove = []
+        positions_to_clear = []
+        removed_units = []
+        
+        for unit_id in unit_ids:
+            unit_index = self.unit_id_to_index.get(unit_id)
+            if unit_index is not None:
+                unit = self._units[unit_index]
+                indices_to_remove.append(unit_index)
+                positions_to_clear.append((unit.position.y, unit.position.x))
+                removed_units.append(unit)
+                del self.unit_id_to_index[unit_id]
+        
+        if not indices_to_remove:
+            return []
+        
+        # Sort indices in descending order for safe removal
+        indices_to_remove.sort(reverse=True)
+        
+        # Clear occupancy at all positions using vectorized operation
+        if positions_to_clear:
+            y_coords = np.array([pos[0] for pos in positions_to_clear], dtype=np.int16)
+            x_coords = np.array([pos[1] for pos in positions_to_clear], dtype=np.int16)
+            self.occupancy[y_coords, x_coords] = -1
+        
+        # Remove units from list (in reverse order to maintain indices)
+        for idx in indices_to_remove:
+            self._units.pop(idx)
+        
+        # Rebuild index mappings efficiently
+        self._rebuild_unit_index_mappings()
+        
+        return removed_units
+    
+    def _rebuild_unit_index_mappings(self) -> None:
+        """Rebuild unit ID to index mappings and occupancy array after batch removal."""
+        # Clear and rebuild unit_id_to_index
+        self.unit_id_to_index.clear()
+        
+        # Clear occupancy grid
+        self.occupancy.fill(-1)
+        
+        # Rebuild both mappings in a single pass
+        for idx, unit in enumerate(self._units):
+            self.unit_id_to_index[unit.unit_id] = idx
+            self.occupancy[unit.position.y, unit.position.x] = idx
     
     def get_unit(self, unit_id: str) -> Optional[Unit]:
-        return self.units.get(unit_id)
+        """Get unit by ID using index lookup."""
+        unit_index = self.unit_id_to_index.get(unit_id)
+        if unit_index is None:
+            return None
+        unit = self._units[unit_index]
+        # Handle removed units (None entries)
+        return unit if unit is not None else None
     
     def get_unit_at(self, position: Vector2) -> Optional[Unit]:
-        for unit in self.units.values():
-            if unit.position == position and unit.is_alive:
-                return unit
-        return None
+        """Get unit at position using O(1) occupancy array lookup."""
+        if not self.is_valid_position(position):
+            return None
+        
+        unit_index = self.occupancy[position.y, position.x]
+        if unit_index < 0:
+            return None
+        
+        unit = self._units[unit_index]
+        # Handle removed units (None entries) and check if alive
+        if unit is None or not unit.is_alive:
+            # Clear stale occupancy entry
+            self.occupancy[position.y, position.x] = -1
+            return None
+        
+        # Check if unit moved without notifying the map (compatibility)
+        if unit.position != position:
+            # Unit moved! Update occupancy arrays
+            self.occupancy[position.y, position.x] = -1  # Clear old position
+            
+            # Find unit at its current position and update occupancy
+            new_pos = unit.position
+            if self.is_valid_position(new_pos):
+                self.occupancy[new_pos.y, new_pos.x] = unit_index
+            
+            return None  # No unit at the requested position anymore
+        
+        return unit
     
     def get_units_by_team(self, team: Team) -> list[Unit]:
-        return [unit for unit in self.units.values() if unit.team == team and unit.is_alive]
+        """Get all units for a team using vectorized operations."""
+        # O(1) mask generation + O(occupied_positions) extraction
+        team_mask = self.get_team_mask(team)
+        y_coords, x_coords = np.where(team_mask)
+        # team_mask guarantees valid units exist at these positions
+        return [self._units[self.occupancy[y, x]] for y, x in zip(y_coords, x_coords)]
+
+    def count_units_by_team(self, team: Team) -> int:
+        """Count units for a team using O(1) mask operations."""
+        return int(np.sum(self.get_team_mask(team)))
+
+    def count_alive_units(self) -> int:
+        """Count all alive units using O(1) operations."""
+        return int(np.sum(self.get_occupied_mask()))
+
+    def get_units_in_positions(self, positions: VectorArray) -> list[Unit]:
+        """Get all units at specified positions using vectorized operations."""
+        if len(positions) == 0:
+            return []
+        
+        # Extract coordinates
+        y_coords, x_coords = positions.y_coords, positions.x_coords
+        
+        # Vectorized occupancy lookup
+        unit_indices = self.occupancy[y_coords, x_coords]
+        
+        # Filter valid indices and return units
+        valid_mask = unit_indices >= 0
+        return [self._units[idx] for idx in unit_indices[valid_mask]]
+
+    def are_positions_blocked(self, positions: VectorArray, team: Team) -> NDArray[np.bool_]:
+        """Check multiple positions for blocking using vectorized operations."""
+        if len(positions) == 0:
+            return np.array([], dtype=np.bool_)
+        
+        y_coords, x_coords = positions.y_coords, positions.x_coords
+        
+        # Combine terrain and unit blocking
+        blocking_mask = self.get_blocking_mask(team)
+        return blocking_mask[y_coords, x_coords]
     
     def move_unit(self, unit_id: str, position: Vector2) -> bool:
+        """Move unit and update occupancy array."""
         unit = self.get_unit(unit_id)
         if not unit:
             return False
@@ -232,7 +527,17 @@ class GameMap:
         if not terrain_type or self.is_terrain_blocking(terrain_type):
             return False
         
+        # Clear old position in occupancy array
+        old_position = unit.position
+        self.occupancy[old_position.y, old_position.x] = -1
+        
+        # Update unit position
         unit.move_to(position)
+        
+        # Set new position in occupancy array
+        unit_index = self.unit_id_to_index[unit_id]
+        self.occupancy[position.y, position.x] = unit_index
+        
         return True
     
     def calculate_movement_range(self, unit: Unit) -> VectorArray:
@@ -319,24 +624,25 @@ class GameMap:
                 distances[:, :-1][mask] = new_distances[mask]
                 changed = True
         
-        # Filter out positions occupied by enemy units
+        # Filter out positions occupied by enemy units using masks
         reachable_mask = distances >= 0
-        y_coords, x_coords = np.where(reachable_mask)
         
-        # Check for unit conflicts (this part still needs unit position lookup)
-        valid_positions = []
-        for y, x in zip(y_coords, x_coords):
-            pos = Vector2(int(y), int(x))
-            if pos != start_pos:  # Skip starting position check
-                existing_unit = self.get_unit_at(pos)
-                if existing_unit and existing_unit.team != unit_team:
-                    continue
-            valid_positions.append([int(y), int(x)])
+        # Get enemy unit positions using vectorized mask
+        enemy_mask = self.get_enemy_mask(unit_team)
         
-        if not valid_positions:
+        # Combine reachability with enemy blocking
+        valid_mask = reachable_mask & ~enemy_mask
+        
+        # Include starting position even if enemy is there (shouldn't happen but be safe)
+        valid_mask[start_pos.y, start_pos.x] = True
+        
+        y_coords, x_coords = np.where(valid_mask)
+        
+        if len(y_coords) == 0:
             return VectorArray([start_pos])  # At least return starting position
         
-        return VectorArray(np.array(valid_positions, dtype=np.int16))
+        positions = np.column_stack((y_coords, x_coords)).astype(np.int16)
+        return VectorArray(positions)
     
     def calculate_attack_range(self, unit: Unit, from_position: Optional[Vector2] = None) -> VectorArray:
         """Calculate attack range using numpy-accelerated distance calculations."""
@@ -466,11 +772,18 @@ class GameMap:
         return VectorArray(valid_positions)
     
     def calculate_threat_range(self, team: Team) -> set[Vector2]:
+        """Calculate threat range for all enemy units using vectorized operations."""
         threat_range = set()
         
-        for unit in self.units.values():
-            if unit.team != team and unit.is_alive:
-                threat_range.update(self.calculate_attack_range(unit))
+        # Use vectorized enemy mask to identify enemy positions
+        enemy_mask = self.get_enemy_mask(team)
+        y_coords, x_coords = np.where(enemy_mask)
+        
+        # Calculate threat ranges only for enemy units
+        for y, x in zip(y_coords, x_coords):
+            unit_index = self.occupancy[y, x]
+            unit = self._units[unit_index]
+            threat_range.update(self.calculate_attack_range(unit))
         
         return threat_range
     

@@ -40,6 +40,7 @@ class InputHandler:
         # Callbacks that will be set by the main Game class
         self.on_quit: Optional[Callable] = None
         self.on_end_unit_turn: Optional[Callable] = None
+        self.on_end_team_turn: Optional[Callable] = None
         self.on_load_selected_scenario: Optional[Callable] = None
         self.on_movement_preview_update: Optional[Callable] = None
         
@@ -55,18 +56,18 @@ class InputHandler:
     def handle_key_press(self, event: InputEvent) -> None:
         """Route key press events to appropriate handlers based on current state."""
         # Handle modal overlays (objectives, help, minimap)
-        if self.state.is_overlay_open():
+        if self.state.ui.is_overlay_open():
             self.handle_overlay_input(event)
         # Handle confirmation dialogs
-        elif self.state.is_dialog_open():
+        elif self.state.ui.is_dialog_open():
             self.handle_dialog_input(event)
         # Handle battle forecast during targeting
-        elif self.state.is_forecast_active():
+        elif self.state.ui.is_forecast_active():
             self.handle_forecast_input(event)
         # Handle existing modals
-        elif self.state.is_action_menu_open():
+        elif self.state.ui.is_action_menu_open():
             self.handle_action_menu_input(event)
-        elif self.state.is_menu_open():
+        elif self.state.ui.is_menu_open():
             self.handle_menu_input(event)
         else:
             self.handle_map_input(event)
@@ -79,7 +80,7 @@ class InputHandler:
             return
         
         # During non-player turns, only allow limited actions
-        if self.state.current_team != 0:  # 0 = Player team
+        if self.state.battle.current_team != 0:  # 0 = Player team
             # Only allow overlay keys during enemy/AI turns
             if event.key == Key.O:
                 self.handle_objectives_key()
@@ -127,47 +128,47 @@ class InputHandler:
         elif event.key in {Key.RIGHT, Key.D}:
             dx = 1
         
-        self.state.move_cursor(dx, dy, self.game_map.width, self.game_map.height)
+        self.state.cursor.move(dx, dy, self.game_map.width, self.game_map.height)
         
         # Update selected target and AOE tiles if in attack targeting mode
         if (
-            self.state.battle_phase == BattlePhase.UNIT_ACTING
-            and self.state.attack_range
+            self.state.battle.phase == BattlePhase.UNIT_ACTING
+            and self.state.battle.attack_range
             and self.combat_manager
         ):
             self.combat_manager.update_attack_targeting()
-        elif self.state.selected_unit_id and self.on_movement_preview_update:
+        elif self.state.battle.selected_unit_id and self.on_movement_preview_update:
             self.on_movement_preview_update()
     
     def handle_confirm(self) -> None:
         """Handle confirmation input based on current battle phase."""
-        cursor_position = self.state.cursor_position
-        
-        if self.state.battle_phase == BattlePhase.UNIT_SELECTION:
+        cursor_position = self.state.cursor.position
+
+        if self.state.battle.phase == BattlePhase.UNIT_SELECTION:
             self._handle_unit_selection_confirm(cursor_position)
-        elif self.state.battle_phase == BattlePhase.UNIT_MOVING:
+        elif self.state.battle.phase == BattlePhase.UNIT_MOVING:
             self._handle_unit_movement_confirm(cursor_position)
-        elif self.state.battle_phase == BattlePhase.ACTION_MENU:
+        elif self.state.battle.phase == BattlePhase.ACTION_MENU:
             self._handle_action_menu_confirm()
-        elif self.state.battle_phase == BattlePhase.UNIT_ACTING:
+        elif self.state.battle.phase == BattlePhase.UNIT_ACTING:
             self._handle_unit_acting_confirm()
     
     def _handle_unit_selection_confirm(self, cursor_position: Vector2) -> None:
         """Handle confirmation during unit selection phase."""
         unit = self.game_map.get_unit_at(cursor_position)
         if unit and unit.team == Team.PLAYER and unit.can_move and unit.can_act:
-            self.state.selected_unit_id = unit.unit_id
+            self.state.battle.selected_unit_id = unit.unit_id
             # Store original position for potential cancellation
-            self.state.original_unit_position = unit.position
-            self.state.battle_phase = BattlePhase.UNIT_MOVING
+            self.state.battle.original_unit_position = unit.position
+            self.state.battle.phase = BattlePhase.UNIT_MOVING
             movement_range = self.game_map.calculate_movement_range(unit)
-            self.state.set_movement_range(movement_range)
+            self.state.battle.set_movement_range(movement_range)
     
     def _handle_unit_movement_confirm(self, cursor_position: Vector2) -> None:
         """Handle confirmation during unit movement phase."""
-        if self.state.is_in_movement_range(cursor_position):
-            if self.state.selected_unit_id:
-                unit = self.game_map.get_unit(self.state.selected_unit_id)
+        if self.state.battle.is_in_movement_range(cursor_position):
+            if self.state.battle.selected_unit_id:
+                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
                 if unit:
                     if self.game_map.move_unit(unit.unit_id, cursor_position):
                         # TODO: Emit unit moved event - will be handled by main Game class
@@ -175,13 +176,13 @@ class InputHandler:
                     unit.has_moved = True
                     
                     # Clear movement range and transition to action menu
-                    self.state.movement_range = VectorArray()
-                    self.state.battle_phase = BattlePhase.ACTION_MENU
+                    self.state.battle.movement_range = VectorArray()
+                    self.state.battle.phase = BattlePhase.ACTION_MENU
                     self._build_action_menu_for_unit(unit)
     
     def _handle_action_menu_confirm(self) -> None:
         """Handle confirmation in action menu phase."""
-        selected_action = self.state.get_selected_action()
+        selected_action = self.state.ui.get_selected_action()
         if selected_action:
             self._handle_action_selection(selected_action)
     
@@ -194,41 +195,41 @@ class InputHandler:
     
     def handle_cancel(self) -> None:
         """Handle cancel input based on current battle phase."""
-        if self.state.battle_phase == BattlePhase.UNIT_MOVING:
+        if self.state.battle.phase == BattlePhase.UNIT_MOVING:
             self._handle_movement_cancel()
-        elif self.state.battle_phase == BattlePhase.ACTION_MENU:
+        elif self.state.battle.phase == BattlePhase.ACTION_MENU:
             self._handle_action_menu_cancel()
-        elif self.state.battle_phase == BattlePhase.TARGETING:
+        elif self.state.battle.phase == BattlePhase.TARGETING:
             self._handle_targeting_cancel()
-        elif self.state.battle_phase == BattlePhase.UNIT_ACTING:
+        elif self.state.battle.phase == BattlePhase.UNIT_ACTING:
             self._handle_unit_acting_cancel()
     
     def _handle_movement_cancel(self) -> None:
         """Handle cancel during movement phase."""
         self.state.reset_selection()
-        self.state.battle_phase = BattlePhase.UNIT_SELECTION
+        self.state.battle.phase = BattlePhase.UNIT_SELECTION
     
     def _handle_action_menu_cancel(self) -> None:
         """Handle cancel during action menu phase."""
-        if self.state.selected_unit_id:
-            unit = self.game_map.get_unit(self.state.selected_unit_id)
+        if self.state.battle.selected_unit_id:
+            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
             if unit and not unit.has_moved:
-                self.state.close_action_menu()
-                self.state.battle_phase = BattlePhase.UNIT_MOVING
+                self.state.ui.close_action_menu()
+                self.state.battle.phase = BattlePhase.UNIT_MOVING
                 movement_range = self.game_map.calculate_movement_range(unit)
-                self.state.set_movement_range(movement_range)
+                self.state.battle.set_movement_range(movement_range)
             else:
                 # Unit has already moved - restore to original position
                 self._restore_unit_to_original_position(unit)
     
     def _handle_targeting_cancel(self) -> None:
         """Handle cancel during targeting phase."""
-        self.state.attack_range = VectorArray()
-        self.state.selected_target = None
-        self.state.aoe_tiles = VectorArray()
-        self.state.battle_phase = BattlePhase.ACTION_MENU
-        if self.state.selected_unit_id:
-            unit = self.game_map.get_unit(self.state.selected_unit_id)
+        self.state.battle.attack_range = VectorArray()
+        self.state.battle.selected_target = None
+        self.state.battle.aoe_tiles = VectorArray()
+        self.state.battle.phase = BattlePhase.ACTION_MENU
+        if self.state.battle.selected_unit_id:
+            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
             if unit:
                 self._build_action_menu_for_unit(unit)
     
@@ -236,53 +237,53 @@ class InputHandler:
         """Handle cancel during unit acting phase."""
         if self.combat_manager:
             self.combat_manager.clear_attack_state()
-        self.state.battle_phase = BattlePhase.ACTION_MENU
-        if self.state.selected_unit_id:
-            unit = self.game_map.get_unit(self.state.selected_unit_id)
+        self.state.battle.phase = BattlePhase.ACTION_MENU
+        if self.state.battle.selected_unit_id:
+            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
             if unit:
                 self._build_action_menu_for_unit(unit)
     
     def _restore_unit_to_original_position(self, unit: Optional["Unit"]) -> None:
         """Restore unit to its original position if possible."""
-        if unit and self.state.original_unit_position is not None:
+        if unit and self.state.battle.original_unit_position is not None:
             # Restore unit to original position
-            if self.game_map.move_unit(unit.unit_id, self.state.original_unit_position):
+            if self.game_map.move_unit(unit.unit_id, self.state.battle.original_unit_position):
                 # TODO: Emit unit moved event for restoration
                 pass
             unit.has_moved = False
-            
+
             # Go back to movement phase to allow re-positioning
-            self.state.close_action_menu()
-            self.state.battle_phase = BattlePhase.UNIT_MOVING
+            self.state.ui.close_action_menu()
+            self.state.battle.phase = BattlePhase.UNIT_MOVING
             movement_range = self.game_map.calculate_movement_range(unit)
-            self.state.set_movement_range(movement_range)
-            
+            self.state.battle.set_movement_range(movement_range)
+
             # Position cursor on the restored unit
-            self.state.cursor_position = unit.position
+            self.state.cursor.set_position(unit.position)
         else:
             # Fallback: deselect and refresh
             self.state.reset_selection()
-            self.state.battle_phase = BattlePhase.UNIT_SELECTION
+            self.state.battle.phase = BattlePhase.UNIT_SELECTION
     
     def handle_tab_cycling(self) -> None:
         """Handle TAB key cycling for different phases."""
-        if self.state.battle_phase == BattlePhase.UNIT_SELECTION:
+        if self.state.battle.phase == BattlePhase.UNIT_SELECTION:
             self._cycle_selectable_units()
-        elif self.state.battle_phase == BattlePhase.UNIT_ACTING and self.combat_manager:
+        elif self.state.battle.phase == BattlePhase.UNIT_ACTING and self.combat_manager:
             self.combat_manager.cycle_targetable_enemies()
     
     def _cycle_selectable_units(self) -> None:
         """Cycle through selectable player units."""
         # Get all selectable units if not already set
-        if not self.state.selectable_units:
+        if not self.state.battle.selectable_units:
             self._refresh_selectable_units()
         
         # Cycle to next unit
-        next_unit_id = self.state.cycle_selectable_units()
+        next_unit_id = self.state.battle.cycle_selectable_units()
         if next_unit_id:
             unit = self.game_map.get_unit(next_unit_id)
             if unit:
-                self.state.cursor_position = unit.position
+                self.state.cursor.set_position(unit.position)
     
     def _refresh_selectable_units(self) -> None:
         """Update the list of selectable player units."""
@@ -290,27 +291,27 @@ class InputHandler:
         selectable_ids = [
             unit.unit_id for unit in player_units if unit.can_move or unit.can_act
         ]
-        self.state.set_selectable_units(selectable_ids)
+        self.state.battle.set_selectable_units(selectable_ids)
     
     def handle_action_menu_input(self, event: InputEvent) -> None:
         """Handle input while action menu is open."""
         if event.key == Key.UP or event.key == Key.W:
-            self.state.move_action_menu_selection(-1)
+            self.state.ui.move_action_menu_selection(-1)
         elif event.key == Key.DOWN or event.key == Key.S:
-            self.state.move_action_menu_selection(1)
+            self.state.ui.move_action_menu_selection(1)
         elif event.is_confirm_key():
             self.handle_confirm()
         elif event.is_cancel_key():
             self.handle_cancel()
         # Add keyboard shortcuts
-        elif event.key == Key.A and "Attack" in self.state.action_menu_items:
-            self.state.action_menu_selection = self.state.action_menu_items.index("Attack")
+        elif event.key == Key.A and "Attack" in self.state.ui.action_menu_items:
+            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Attack")
             self.handle_confirm()
-        elif event.key == Key.W and "Wait" in self.state.action_menu_items:
-            self.state.action_menu_selection = self.state.action_menu_items.index("Wait")
+        elif event.key == Key.W and "Wait" in self.state.ui.action_menu_items:
+            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Wait")
             self.handle_confirm()
-        elif event.key == Key.M and "Move" in self.state.action_menu_items:
-            self.state.action_menu_selection = self.state.action_menu_items.index("Move")
+        elif event.key == Key.M and "Move" in self.state.ui.action_menu_items:
+            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Move")
             self.handle_confirm()
     
     def handle_main_menu_input(self, event: InputEvent) -> None:
@@ -336,32 +337,32 @@ class InputHandler:
     def handle_dialog_input(self, event: InputEvent) -> None:
         """Handle input while confirmation dialog is open."""
         if event.key in {Key.LEFT, Key.RIGHT}:
-            self.state.move_dialog_selection(1 if event.key == Key.RIGHT else -1)
+            self.state.ui.move_dialog_selection(1 if event.key == Key.RIGHT else -1)
         elif event.is_confirm_key():
             self._handle_dialog_confirmation()
         elif event.is_cancel_key():
-            self.state.close_dialog()
+            self.state.ui.close_dialog()
     
     def _handle_dialog_confirmation(self) -> None:
         """Handle dialog confirmation based on dialog type."""
-        if self.state.active_dialog == "confirm_end_turn":
-            if self.state.get_dialog_selection() == 0:  # Yes
-                if self.on_end_unit_turn:
-                    self.on_end_unit_turn()
-        elif self.state.active_dialog == "confirm_friendly_fire":
+        if self.state.ui.active_dialog == "confirm_end_turn":
+            if self.state.ui.get_dialog_selection() == 0:  # Yes
+                if self.on_end_team_turn:
+                    self.on_end_team_turn()
+        elif self.state.ui.active_dialog == "confirm_friendly_fire":
             if (
-                self.state.get_dialog_selection() == 0  # Yes - proceed with attack
+                self.state.ui.get_dialog_selection() == 0  # Yes - proceed with attack
                 and self.combat_manager
             ):
                 success = self.combat_manager.execute_confirmed_attack()
                 if success and self.on_end_unit_turn:
                     self.on_end_unit_turn()
-        self.state.close_dialog()
+        self.state.ui.close_dialog()
     
     def handle_forecast_input(self, event: InputEvent) -> None:
         """Handle input while battle forecast is active."""
         if event.event_type == InputType.KEY_PRESS:
-            self.state.stop_forecast()
+            self.state.ui.stop_forecast()
     
     # Direct action key handlers
     def handle_objectives_key(self) -> None:
@@ -381,39 +382,39 @@ class InputHandler:
     
     def handle_end_turn_key(self) -> None:
         """Handle E key press to end turn (with confirmation)."""
-        self.state.open_dialog("confirm_end_turn")
+        self.state.ui.open_dialog("confirm_end_turn")
     
     def handle_attack_key(self) -> None:
         """Handle A key press for direct attack."""
         # Only allow during player turn and when a unit is selected
-        if self.state.current_team != 0 or not self.state.selected_unit_id:
+        if self.state.battle.current_team != 0 or not self.state.battle.selected_unit_id:
             return
-        
-        unit = self.game_map.get_unit(self.state.selected_unit_id)
+
+        unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
         if not unit or not unit.can_act or not self.combat_manager:
             return
         
         # Handle quick attack based on current phase
-        if self.state.battle_phase == BattlePhase.UNIT_SELECTION:
+        if self.state.battle.phase == BattlePhase.UNIT_SELECTION:
             # Unit just selected, transition to attack directly
-            self.state.battle_phase = BattlePhase.UNIT_ACTING
+            self.state.battle.phase = BattlePhase.UNIT_ACTING
             self.combat_manager.setup_attack_targeting(unit)
-        elif self.state.battle_phase == BattlePhase.UNIT_MOVING:
+        elif self.state.battle.phase == BattlePhase.UNIT_MOVING:
             # Unit is in movement, skip to attack
-            self.state.movement_range = VectorArray()
-            self.state.battle_phase = BattlePhase.UNIT_ACTING
+            self.state.battle.movement_range = VectorArray()
+            self.state.battle.phase = BattlePhase.UNIT_ACTING
             self.combat_manager.setup_attack_targeting(unit)
-        elif self.state.battle_phase == BattlePhase.ACTION_MENU:
+        elif self.state.battle.phase == BattlePhase.ACTION_MENU:
             # Use normal action selection
             self._handle_action_selection("Attack")
     
     def handle_wait_key(self) -> None:
         """Handle W key press for direct wait."""
         # Only allow during player turn and when a unit is selected
-        if self.state.current_team != 0 or not self.state.selected_unit_id:
+        if self.state.battle.current_team != 0 or not self.state.battle.selected_unit_id:
             return
-        
-        unit = self.game_map.get_unit(self.state.selected_unit_id)
+
+        unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
         if not unit:
             return
         
@@ -428,32 +429,32 @@ class InputHandler:
         """Handle the selected action from the action menu."""
         if action == "Move":
             # Go back to movement targeting
-            if self.state.selected_unit_id:
-                unit = self.game_map.get_unit(self.state.selected_unit_id)
+            if self.state.battle.selected_unit_id:
+                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
                 if unit:
-                    self.state.close_action_menu()
-                    self.state.battle_phase = BattlePhase.UNIT_MOVING
+                    self.state.ui.close_action_menu()
+                    self.state.battle.phase = BattlePhase.UNIT_MOVING
                     movement_range = self.game_map.calculate_movement_range(unit)
-                    self.state.set_movement_range(movement_range)
+                    self.state.battle.set_movement_range(movement_range)
         
         elif action == "Attack":
             # Go to attack targeting
-            if self.state.selected_unit_id and self.combat_manager:
-                unit = self.game_map.get_unit(self.state.selected_unit_id)
+            if self.state.battle.selected_unit_id and self.combat_manager:
+                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
                 if unit:
-                    self.state.close_action_menu()
-                    self.state.battle_phase = BattlePhase.UNIT_ACTING
+                    self.state.ui.close_action_menu()
+                    self.state.battle.phase = BattlePhase.UNIT_ACTING
                     self.combat_manager.setup_attack_targeting(unit)
         
         elif action == "Wait":
             # End unit's turn
-            if self.state.selected_unit_id:
-                unit = self.game_map.get_unit(self.state.selected_unit_id)
+            if self.state.battle.selected_unit_id:
+                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
                 if unit:
                     # When waiting, unit should not be able to move or act anymore
                     unit.has_moved = True  # Prevent further movement
                     unit.has_acted = True  # Prevent further actions
-                    self.state.close_action_menu()
+                    self.state.ui.close_action_menu()
                     if self.on_end_unit_turn:
                         self.on_end_unit_turn()
     
@@ -472,7 +473,7 @@ class InputHandler:
         # Wait action - always available
         actions.append("Wait")
         
-        self.state.open_action_menu(actions)
+        self.state.ui.open_action_menu(actions)
         
         # Auto-select the most appropriate action
         self._auto_select_action_menu_item(unit)
@@ -481,8 +482,8 @@ class InputHandler:
         """Automatically select the most appropriate action in the menu."""
         if not unit.can_act:
             # Unit can't act, select Wait
-            if "Wait" in self.state.action_menu_items:
-                self.state.action_menu_selection = self.state.action_menu_items.index("Wait")
+            if "Wait" in self.state.ui.action_menu_items:
+                self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Wait")
             return
         
         # Check if there are ENEMY targets in attack range (not friendlies)
@@ -500,7 +501,7 @@ class InputHandler:
                 break
         
         # Select Attack only if there are enemy targets, otherwise Wait
-        if has_enemy_targets and "Attack" in self.state.action_menu_items:
-            self.state.action_menu_selection = self.state.action_menu_items.index("Attack")
-        elif "Wait" in self.state.action_menu_items:
-            self.state.action_menu_selection = self.state.action_menu_items.index("Wait")
+        if has_enemy_targets and "Attack" in self.state.ui.action_menu_items:
+            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Attack")
+        elif "Wait" in self.state.ui.action_menu_items:
+            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Wait")

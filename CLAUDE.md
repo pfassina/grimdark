@@ -6,12 +6,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Grimdark SRPG is a Strategy Role-Playing Game built in Python with a clean, renderer-agnostic architecture. The codebase demonstrates complete separation between game logic and rendering through a push-based, data-driven design.
 
+**⚠️ ACTIVE DEVELOPMENT**: This project is under active development. Breaking changes are expected and backward compatibility is NOT maintained. Feel free to refactor, redesign, or enhance any part of the codebase as needed, as long as it doesn't violate the core architectural principles and design premises outlined below.
+
 ## Development Commands
 
 ```bash
-# Run architecture validation test
-python tests/test_architecture.py
+# ===== NEW COMPREHENSIVE TEST SUITE =====
+# Run all tests with the convenient test runner
+python run_tests.py --help           # Show all available options
+python run_tests.py --quick          # Quick unit tests (default)
+python run_tests.py --all            # All tests with coverage report
+python run_tests.py --unit           # Unit tests only
+python run_tests.py --integration    # Integration tests only
+python run_tests.py --performance    # Performance benchmarks
+python run_tests.py --quality        # Code quality checks (pyright + ruff)
+python run_tests.py --ci             # Full CI pipeline
 
+# Or use pytest directly
+nix develop --command pytest tests/                    # All tests
+nix develop --command pytest tests/unit/               # Unit tests
+nix develop --command pytest tests/integration/        # Integration tests
+nix develop --command pytest tests/performance/        # Performance benchmarks
+nix develop --command pytest --cov=src --cov-report=html  # With coverage
+
+
+# ===== DEMOS AND INTERACTIVE PLAY =====
 # Run auto-playing demo with simple renderer (uses default scenario)
 python demos/demo.py
 
@@ -23,61 +42,92 @@ python demos/demo_scenario.py assets/scenarios/tutorial.yaml
 python demos/demo_scenario.py assets/scenarios/fortress_defense.yaml
 python demos/demo_scenario.py assets/scenarios/escape_mission.yaml
 
-# Test scenario loading and objectives
-python tests/test_scenario.py
-python tests/test_objectives.py
-python tests/test_all_scenarios.py
-
 # Load maps from CSV directories
 python demos/demo_map_loader.py assets/maps/fortress
 
+# ===== DEVELOPMENT TOOLS =====
 # Update Nix flake dependencies
 nix flake update --update-input nixpkgs
 
 # Code quality and linting
-pyright .              # Type checking and error detection
-ruff check .           # Code linting and style checking
-ruff check . --fix     # Auto-fix linting issues where possible
-ruff check . --select ARG  # Check for unused function/method parameters
+nix develop --command pyright .                    # Type checking and error detection
+nix develop --command ruff check .                 # Code linting and style checking
+nix develop --command ruff check . --fix           # Auto-fix linting issues where possible
+nix develop --command ruff check . --select ARG    # Check for unused function/method parameters
 ```
 
 ## Testing Workflow for Claude Code
 
-**IMPORTANT**: `main.py` uses `TerminalRenderer` which requires an interactive terminal that Claude Code cannot access. For testing during development, use the following workflow:
+**IMPORTANT**: `main.py` uses `TerminalRenderer` which requires an interactive terminal that Claude Code cannot access. For testing during development, use the comprehensive test suite:
 
-### Available Testing Methods
+### Comprehensive Test Suite (Recommended)
 
-1. **Quick Demo Testing**: `python demos/demo.py`
-   - Uses `SimpleRenderer` (non-interactive)
-   - Auto-plays for 10 frames then quits
-   - Limited input (only moves cursor right)
-   - Good for basic functionality verification
+The project now includes a modern, comprehensive test suite using pytest with extensive coverage:
 
-2. **Architecture Tests**: `python tests/test_architecture.py`
-   - Validates core architecture principles
-   - Tests rendering separation
-   - No visual output required
+1. **Quick Testing**: `python run_tests.py --quick`
+   - Runs unit tests only (fastest option)
+   - Skips slow tests and benchmarks
+   - Perfect for rapid development iteration
 
-3. **Scenario Tests**: Run scenario-specific tests
-   - `python tests/test_scenario.py`
-   - `python tests/test_objectives.py` 
-   - `python tests/test_all_scenarios.py`
+2. **Full Test Suite**: `python run_tests.py --all`
+   - Unit tests, integration tests, performance tests
+   - Coverage reporting (HTML + terminal)
+   - Comprehensive validation of all systems
+
+3. **Code Quality**: `python run_tests.py --quality`
+   - Type checking with pyright
+   - Linting with ruff
+   - Unused parameter detection
+
+4. **Performance Monitoring**: `python run_tests.py --performance`
+   - Benchmarks critical game systems
+   - Pathfinding, combat, rendering performance
+   - Regression detection
+
+5. **CI Pipeline**: `python run_tests.py --ci`
+   - Complete continuous integration pipeline
+   - All quality checks + functional tests
+
+### Test Categories
+
+- **Unit Tests** (`tests/unit/`): Individual component testing
+  - Core data structures (Vector2, VectorArray, GameState)
+  - Game logic (GameMap, Unit, combat systems)
+  - Manager systems (InputHandler, CombatManager, etc.)
+
+- **Integration Tests** (`tests/integration/`): System interaction testing
+  - Combat system integration
+  - Manager coordination
+  - Full game loop testing
+
+- **Performance Tests** (`tests/performance/`): Benchmark testing
+  - Pathfinding performance
+  - Combat resolution speed
+  - Rendering context generation
+  - Memory usage profiling
+
+- **Edge Case Tests** (`tests/edge_cases/`): Boundary condition testing
+  - Error handling and edge cases
+  - Resource limits and extreme values
+  - Data structure boundary conditions
 
 ### Testing New Features
 
-When implementing new features that require specific user interactions:
+When implementing new features:
 
-1. **Create feature-specific demo scripts** in `demos/` directory
-2. **Extend SimpleRenderer** with scripted input sequences if needed
-3. **Add unit tests** for game logic components
-4. **Verify through existing test suite** that architecture is maintained
+1. **Write unit tests first** in appropriate `tests/unit/` subdirectory
+2. **Add integration tests** if feature involves multiple systems
+3. **Include performance tests** for computationally intensive features
+4. **Update fixtures** in `tests/conftest.py` for reusable test components
+5. **Run full test suite** with `python run_tests.py --all`
 
-Current `demos/demo.py` limitations:
-- Only sends RIGHT key every 3 frames
-- Quits after 10 frames  
-- Won't exercise combat, abilities, objectives, or complex interactions
+### Interactive Testing (For Visual Features)
 
-For comprehensive feature testing, create targeted demo scripts or enhance the simple renderer with configurable input sequences.
+For features requiring visual verification:
+
+1. **Demo Scripts**: Create targeted demos in `demos/` directory for manual testing
+2. **Scenario Testing**: Use scenario-specific demos for complex interactions
+3. **Unit Testing**: Ensure all game logic is thoroughly tested without requiring visual verification
 
 ## Development Environment
 
@@ -342,21 +392,23 @@ This project follows modern Python conventions. When writing or modifying code:
 
 3. **Verify functionality**:
    ```bash
-   nix develop --command python tests/test_architecture.py  # Core functionality
-   nix develop --command python demos/demo.py              # Basic game demo
+   python run_tests.py --quick                             # Quick unit tests
+   python run_tests.py --all                               # Full test suite
    ```
 
 **Never consider a task complete until both pyright and ruff report zero errors** (or only acceptable warnings with proper justification).
 
 ## Testing
 
-Multiple test scripts validate different aspects:
-- `tests/test_architecture.py` - Core architecture and rendering separation
-- `tests/test_objectives.py` - Scenario objectives and victory/defeat conditions
-- `tests/test_scenario.py` - Scenario loading and unit placement
+The comprehensive test suite validates different aspects:
+- **Unit Tests** - Core components and game logic
+- **Integration Tests** - System interactions and workflows
+- **Performance Tests** - Benchmarks and regression detection
+- **Edge Case Tests** - Boundary conditions and error handling
 
 When adding features:
 - Ensure all existing tests still pass
-- Test that both renderers display new features correctly
+- Write comprehensive unit tests for new functionality
+- Add integration tests for multi-system features
 - Verify game logic works without any renderer (testability principle)
-- Add scenario tests for new objective types
+- Include performance benchmarks for computationally intensive features

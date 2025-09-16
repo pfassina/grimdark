@@ -4,6 +4,7 @@ from typing import Optional, Any
 from pathlib import Path
 
 from ..core.data_structures import DataConverter, Vector2
+from ..core.events import UnitSpawned, LogMessage
 
 import yaml
 
@@ -223,52 +224,47 @@ class ScenarioLoader:
         import random
         
         if placement.placement_at:
-            # Direct coordinate placement
             return placement.placement_at
         
-        elif placement.placement_marker:
-            # Marker-based placement
+        if placement.placement_marker:
             marker = scenario.markers.get(placement.placement_marker)
             if not marker:
                 print(f"Warning: Marker '{placement.placement_marker}' not found")
                 return None
             return marker.position
         
-        elif placement.placement_region:
-            # Region-based placement with policy
-            region = scenario.regions.get(placement.placement_region)
-            if not region:
-                print(f"Warning: Region '{placement.placement_region}' not found")
-                return None
+        if not placement.placement_region:
+            return None
             
-            free_positions = region.get_free_positions(game_map)
-            if not free_positions:
-                print(f"Warning: No free positions in region '{placement.placement_region}'")
-                return None
-            
-            # Apply placement policy
-            if placement.placement_policy == placement.placement_policy.RANDOM_FREE_TILE:
-                return random.choice(free_positions)
-            
-            elif placement.placement_policy == placement.placement_policy.SPREAD_EVENLY:
-                # For now, just use random. A more sophisticated implementation would
-                # track previously placed units and spread them out evenly
-                return random.choice(free_positions)
-            
-            elif placement.placement_policy == placement.placement_policy.LINE_LEFT_TO_RIGHT:
-                # Sort by x coordinate, then by y
-                free_positions.sort(key=lambda pos: (pos[0], pos[1]))
-                return free_positions[0] if free_positions else None
-            
-            elif placement.placement_policy == placement.placement_policy.LINE_TOP_TO_BOTTOM:
-                # Sort by y coordinate, then by x
-                free_positions.sort(key=lambda pos: (pos[1], pos[0]))
-                return free_positions[0] if free_positions else None
-            
-            else:
-                return random.choice(free_positions)
+        region = scenario.regions.get(placement.placement_region)
+        if not region:
+            print(f"Warning: Region '{placement.placement_region}' not found")
+            return None
         
-        return None
+        free_positions = region.get_free_positions(game_map)
+        if not free_positions:
+            print(f"Warning: No free positions in region '{placement.placement_region}'")
+            return None
+        
+        if placement.placement_policy == placement.placement_policy.RANDOM_FREE_TILE:
+            return random.choice(free_positions)
+        
+        if placement.placement_policy == placement.placement_policy.SPREAD_EVENLY:
+            # For now, just use random. A more sophisticated implementation would
+            # track previously placed units and spread them out evenly
+            return random.choice(free_positions)
+        
+        if placement.placement_policy == placement.placement_policy.LINE_LEFT_TO_RIGHT:
+            # Sort by x coordinate, then by y
+            free_positions.sort(key=lambda pos: (pos[0], pos[1]))
+            return free_positions[0] if free_positions else None
+        
+        if placement.placement_policy == placement.placement_policy.LINE_TOP_TO_BOTTOM:
+            # Sort by y coordinate, then by x
+            free_positions.sort(key=lambda pos: (pos[1], pos[0]))
+            return free_positions[0] if free_positions else None
+        
+        return random.choice(free_positions)
     
     @staticmethod
     def _parse_objective(obj_data: dict[str, Any]) -> Optional[Objective]:
@@ -280,14 +276,14 @@ class ScenarioLoader:
                 description=obj_data.get("description", "Defeat all enemies")
             )
         
-        elif obj_type == "survive_turns":
+        if obj_type == "survive_turns":
             turns = obj_data.get("turns", 10)
             return SurviveTurnsObjective(
                 turns=turns,
                 description=obj_data.get("description")
             )
         
-        elif obj_type == "reach_position":
+        if obj_type == "reach_position":
             position = obj_data.get("position", [0, 0])
             return ReachPositionObjective(
                 position=Vector2(position[0], position[1]),
@@ -295,33 +291,33 @@ class ScenarioLoader:
                 description=obj_data.get("description")
             )
         
-        elif obj_type == "defeat_unit":
+        if obj_type == "defeat_unit":
             return DefeatUnitObjective(
                 unit_name=obj_data["unit_name"],
                 description=obj_data.get("description")
             )
         
-        elif obj_type == "protect_unit":
+        if obj_type == "protect_unit":
             return ProtectUnitObjective(
                 unit_name=obj_data["unit_name"],
                 description=obj_data.get("description")
             )
         
-        elif obj_type == "position_captured":
+        if obj_type == "position_captured":
             position = obj_data.get("position", [0, 0])
             return PositionCapturedObjective(
                 position=Vector2(position[0], position[1]),
                 description=obj_data.get("description")
             )
         
-        elif obj_type == "turn_limit":
+        if obj_type == "turn_limit":
             turns = obj_data.get("turns", 20)
             return TurnLimitObjective(
                 turns=turns,
                 description=obj_data.get("description")
             )
         
-        elif obj_type == "all_units_defeated":
+        if obj_type == "all_units_defeated":
             return AllUnitsDefeatedObjective(
                 description=obj_data.get("description", "Keep at least one unit alive")
             )
@@ -433,7 +429,7 @@ class ScenarioLoader:
                     # Check if tile is passable for units
                     if actor_name in unit_names:
                         tile = game_map.get_tile(Vector2(x, y))
-                        if tile and tile.blocks_movement:
+                        if tile.blocks_movement:
                             errors.append(f"Unit placement '{actor_name}' on impassable tile at ({x}, {y})")
         
         # Check for actors without placements (in new format)
@@ -467,7 +463,7 @@ class ScenarioLoader:
         return errors
     
     @staticmethod
-    def create_game_map(scenario: Scenario) -> GameMap:
+    def create_game_map(scenario: Scenario, event_manager=None) -> GameMap:
         """Create a GameMap from scenario data."""
         if scenario.map_file:
             # Load from CSV directory format
@@ -482,7 +478,7 @@ class ScenarioLoader:
             raise ValueError("Scenario must have a map_file reference")
     
     @staticmethod
-    def place_units(scenario: Scenario, game_map: GameMap) -> None:
+    def place_units(scenario: Scenario, game_map: GameMap, event_manager=None) -> None:
         """Place units from scenario data onto the map.
         
         Uses the new placement system to resolve unit positions from
@@ -498,7 +494,29 @@ class ScenarioLoader:
                 unit = DataConverter.scenario_data_to_unit(unit_data)
                 
                 # Add unit to map
-                if not game_map.add_unit(unit):
+                if game_map.add_unit(unit):
+                    # Emit unit spawned event
+                    if event_manager:
+                        event_manager.publish(
+                            UnitSpawned(
+                                turn=0,  # Initial placement
+                                unit_name=unit.name,
+                                team=unit.team,
+                                position=(unit.position.x, unit.position.y)
+                            ),
+                            source="ScenarioLoader"
+                        )
+                        event_manager.publish(
+                            LogMessage(
+                                turn=0,
+                                message=f"Unit {unit.name} spawned at {unit.position}",
+                                category="SCENARIO",
+                                level="INFO",
+                                source="ScenarioLoader"
+                            ),
+                            source="ScenarioLoader"
+                        )
+                else:
                     print(f"Warning: Could not place unit '{unit.name}' at ({unit.position.x}, {unit.position.y})")
             except (KeyError, ValueError) as e:
                 print(f"Warning: Error creating unit '{unit_data.name}': {e}")

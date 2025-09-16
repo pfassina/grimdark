@@ -102,9 +102,22 @@ class TerminalRenderer(Renderer):
             "show_cursor": "\033[?25h",
             "text_normal": "\033[97m",      # White
             "text_dim": "\033[37m",         # Light gray
+            "text_bright": "\033[1;97m",    # Bright white
             "text_success": "\033[92m",     # Green
             "text_warning": "\033[93m",     # Yellow
-            "text_error": "\033[91m"        # Red
+            "text_error": "\033[91m",       # Red
+            "text_red": "\033[91m",         # Red
+            "text_green": "\033[92m",       # Green
+            "text_yellow": "\033[93m",      # Yellow
+            "text_blue": "\033[94m",        # Blue
+            "text_magenta": "\033[95m",     # Magenta
+            "text_cyan": "\033[96m",        # Cyan
+            "text_white": "\033[97m",       # White
+            "text_bright_red": "\033[1;91m",    # Bright red
+            "text_bright_green": "\033[1;92m",  # Bright green
+            "text_bright_yellow": "\033[1;93m", # Bright yellow
+            "text_bright_blue": "\033[1;94m",   # Bright blue
+            "text_bright_cyan": "\033[1;96m"    # Bright cyan
         }
         
         # Layout configuration
@@ -152,12 +165,17 @@ class TerminalRenderer(Renderer):
         grid = [[' ' for _ in range(screen_width)] for _ in range(screen_height)]
         colors = [['' for _ in range(screen_width)] for _ in range(screen_height)]
         
-        # Check if we have battle-specific content (world dimensions indicate battle phase)
-        is_battle_phase = context.world_width > 0 and context.world_height > 0
+        # Check if we have battle-specific content - be more inclusive
+        # Use 4-panel layout if we have a timeline (even if empty), units, or world dimensions
+        has_timeline = context.timeline is not None  # Timeline object exists, even if empty
+        has_world = context.world_width > 0 and context.world_height > 0
+        has_units = context.units and len(context.units) > 0
+        
+        is_battle_phase = has_timeline or has_world or has_units
         
         if is_battle_phase:
-            # Battle phase: render with 3-panel layout
-            self._render_battle_layout(context, grid, colors, screen_width, screen_height)
+            # Battle phase: render with 4-panel layout
+            self._render_four_panel_layout(context, grid, colors, screen_width, screen_height)
         else:
             # Menu phase: render with simple full-screen layout
             self._render_simple_layout(context, grid, colors, screen_width, screen_height)
@@ -184,29 +202,42 @@ class TerminalRenderer(Renderer):
         else:
             self.sidebar_width = 28
             
-        # Calculate viewport dimensions
+        # Reserve space for timeline at top (2 lines: timeline + separator)
+        timeline_height = 2 if context.timeline else 0
+        
+        # Calculate viewport dimensions with timeline space
         map_viewport_width = screen_width - self.sidebar_width
-        map_viewport_height = screen_height - self.bottom_strip_height
+        map_viewport_height = screen_height - self.bottom_strip_height - timeline_height
         
-        # Render map viewport (left side)
-        self._render_map_viewport(context, grid, colors, map_viewport_width, map_viewport_height)
+        # Render timeline at top if available
+        if context.timeline and timeline_height > 0:
+            self._render_timeline(context, grid, colors, 0, 0, screen_width)
+            
+            # Draw horizontal separator below timeline
+            for x in range(screen_width):
+                grid[timeline_height - 1][x] = '─'
+                colors[timeline_height - 1][x] = self.terminal_codes["text_dim"]
         
-        # Draw vertical separator between map and sidebar
-        for y in range(map_viewport_height):
+        # Render map viewport (left side, offset by timeline height)
+        self._render_map_viewport(context, grid, colors, map_viewport_width, map_viewport_height, timeline_height)
+        
+        # Draw vertical separator between map and sidebar (offset by timeline height)
+        for y in range(timeline_height, timeline_height + map_viewport_height):
             grid[y][map_viewport_width] = '│'
             colors[y][map_viewport_width] = self.terminal_codes["text_dim"]
         
-        # Render sidebar panels (right side)
-        self._render_sidebar(context, grid, colors, map_viewport_width + 1, 0, 
+        # Render sidebar panels (right side, offset by timeline height)
+        self._render_sidebar(context, grid, colors, map_viewport_width + 1, timeline_height, 
                            self.sidebar_width - 1, map_viewport_height)
         
         # Draw horizontal separator above bottom strip
+        separator_y = timeline_height + map_viewport_height
         for x in range(screen_width):
-            grid[map_viewport_height][x] = '─'
-            colors[map_viewport_height][x] = self.terminal_codes["text_dim"]
+            grid[separator_y][x] = '─'
+            colors[separator_y][x] = self.terminal_codes["text_dim"]
         
         # Render bottom message strip
-        self._render_message_strip(context, grid, colors, 0, map_viewport_height + 1, 
+        self._render_message_strip(context, grid, colors, 0, separator_y + 1, 
                                  screen_width, self.bottom_strip_height - 1)
         
         # Apply cursor effect AFTER panels are rendered (only to map area)
@@ -230,6 +261,101 @@ class TerminalRenderer(Renderer):
         if context.overlay:
             self._render_overlay_on_grid(context.overlay, grid, colors)
     
+    def _render_four_panel_layout(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
+                                screen_width: int, screen_height: int) -> None:
+        """Render the new 4-panel UI layout: Timeline (top) + Battlefield (center) + Unit Info (bottom-left) + Action Menu (bottom-right)."""
+        # Reset cursor position tracking
+        self._cursor_position = None
+        
+        # Calculate panel dimensions based on ui.md specifications
+        timeline_height = max(2, int(screen_height * 0.12))  # 10-15% -> use 12%
+        bottom_panel_height = max(5, int(screen_height * 0.20))  # 20% height for bottom panels, min 5 lines
+        battlefield_height = screen_height - timeline_height - bottom_panel_height
+        
+        # Bottom panel width splits: give more space to unit info panel
+        unit_info_width = max(30, int(screen_width * 0.35))  # Increased to 35% for better visibility
+        action_menu_width = max(25, int(screen_width * 0.25)) 
+        battlefield_width = screen_width  # Full width for battlefield
+        
+        # Panel positioning
+        timeline_y = 0
+        battlefield_y = timeline_height
+        bottom_panels_y = timeline_height + battlefield_height
+        
+        # 1. Render Timeline Panel (full width at top)
+        if context.timeline:
+            self._render_timeline_panel(context, grid, colors, 0, timeline_y, screen_width, timeline_height)
+        else:
+            # Draw separator below timeline
+            separator_y = timeline_height - 1
+            for x in range(screen_width):
+                grid[separator_y][x] = '─'
+                colors[separator_y][x] = self.terminal_codes["text_dim"]
+        
+        # 2. Render Battlefield Panel and Log Panel (split horizontally)
+        # Split the battlefield area: 60% for map, 40% for log
+        map_width = int(battlefield_width * 0.6)
+        log_width = battlefield_width - map_width - 1  # -1 for separator
+        
+        # Render battlefield on the left
+        self._render_battlefield_panel(context, grid, colors, 0, battlefield_y, map_width, battlefield_height)
+        
+        # Draw vertical separator between battlefield and log
+        separator_x = map_width
+        for y in range(battlefield_y, battlefield_y + battlefield_height):
+            if separator_x < screen_width:
+                grid[y][separator_x] = '│'
+                colors[y][separator_x] = self.terminal_codes["text_dim"]
+        
+        # Render log panel on the right
+        if context.log_panel and log_width > 10:  # Only render if we have enough width
+            self._render_log_panel(context, grid, colors, map_width + 1, battlefield_y, log_width, battlefield_height)
+        
+        # Draw separator above bottom panels
+        separator_y = bottom_panels_y - 1
+        for x in range(screen_width):
+            grid[separator_y][x] = '─'
+            colors[separator_y][x] = self.terminal_codes["text_dim"]
+        
+        # 3. Render Unit Info Panel (bottom-left)
+        if context.unit_info_panel:
+            self._render_unit_info_panel(context, grid, colors, 0, bottom_panels_y, unit_info_width, bottom_panel_height)
+        
+        # 4. Render Action Menu Panel (bottom-right)
+        if context.action_menu_panel:
+            action_menu_x = screen_width - action_menu_width
+            self._render_action_menu_panel(context, grid, colors, action_menu_x, bottom_panels_y, action_menu_width, bottom_panel_height)
+        
+        # Draw vertical separator between bottom panels
+        separator_x = unit_info_width
+        for y in range(bottom_panels_y, screen_height):
+            if separator_x < screen_width:
+                grid[y][separator_x] = '│'
+                colors[y][separator_x] = self.terminal_codes["text_dim"]
+        
+        # Apply cursor effect AFTER panels are rendered (only to battlefield area)
+        cursor_pos: Optional[tuple[int, int]] = self._cursor_position
+        if cursor_pos is not None:
+            cx, cy = cursor_pos
+            # Only apply cursor effect if it's in the battlefield area
+            if cx < battlefield_width and battlefield_y <= cy < battlefield_y + battlefield_height:
+                adjusted_cy = cy  # Cursor position is already adjusted by viewport
+                if 0 <= adjusted_cy < screen_height:
+                    colors[adjusted_cy][cx] = "\033[7m" + (colors[adjusted_cy][cx] if colors[adjusted_cy][cx] else "")
+        
+        # Render strategic TUI overlays (on top of everything else)
+        if context.battle_forecast:
+            self._render_battle_forecast_on_grid(context.battle_forecast, grid, colors)
+        
+        if context.banner:
+            self._render_banner_on_grid(context.banner, grid, colors)
+        
+        if context.overlay:
+            self._render_overlay_on_grid(context.overlay, grid, colors)
+        
+        if context.dialog:
+            self._render_dialog_on_grid(context.dialog, grid, colors)
+
     def _render_simple_layout(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
                             screen_width: int, screen_height: int) -> None:
         """Render simple full-screen layout for menus."""
@@ -248,14 +374,14 @@ class TerminalRenderer(Renderer):
                             grid[text.y][text.x + i] = char
         
         # Render strategic TUI elements in simple layout too
-        if context.dialog:
-            self._render_dialog_on_grid(context.dialog, grid, colors)
-        
         if context.overlay:
             self._render_overlay_on_grid(context.overlay, grid, colors)
+        
+        if context.dialog:
+            self._render_dialog_on_grid(context.dialog, grid, colors)
     
     def _render_map_viewport(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
-                           width: int, height: int) -> None:
+                           width: int, height: int, y_offset: int = 0) -> None:
         """Render the map area in the left portion of the screen."""
         render_items = defaultdict(list)
         
@@ -279,7 +405,7 @@ class TerminalRenderer(Renderer):
         
         for layer in [LayerType.TERRAIN, LayerType.OVERLAY, LayerType.UNITS, LayerType.UI]:
             for item in render_items[layer]:
-                self._render_item(item, grid, colors, context, width, height)
+                self._render_item(item, grid, colors, context, width, height, y_offset)
     
     def _render_sidebar(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]],
                        x_offset: int, y_offset: int, width: int, height: int) -> None:
@@ -370,7 +496,7 @@ class TerminalRenderer(Renderer):
                          x_offset: int, y_offset: int, width: int, compact: bool = False) -> int:
         """Render enhanced unit information panel. Returns height used."""
         # Use compact mode when action menu needs space
-        panel_height = 9 if compact else 11  # Reduced when compact
+        panel_height = 12 if compact else 17  # Increased to accommodate wound/morale info
         
         # Draw panel border
         self._draw_box(grid, colors, x_offset, y_offset, width, panel_height, "Unit")
@@ -438,6 +564,49 @@ class TerminalRenderer(Renderer):
                     self._draw_text(grid, effects_text, x_offset + 2, y_offset + current_line, width - 4, "", colors)
                 else:
                     self._draw_text(grid, "Effects: None", x_offset + 2, y_offset + current_line, width - 4, "", colors)
+                current_line += 1
+            
+            # Morale information
+            morale_color = ""
+            if unit.morale_state in ["Routed", "Terrified"]:
+                morale_color = self.terminal_codes.get("text_error", "")
+            elif unit.morale_state in ["Panicked", "Afraid", "Shaken"]:
+                morale_color = self.terminal_codes.get("text_warning", "")
+            elif unit.morale_state in ["Heroic", "Confident"]:
+                morale_color = self.terminal_codes.get("text_success", "")
+                
+            self._draw_text(grid, f"Morale: {unit.morale_current} ({unit.morale_state})", 
+                           x_offset + 2, y_offset + current_line, width - 4, morale_color, colors)
+            current_line += 1
+            
+            # Wound information  
+            if unit.wound_count > 0:
+                wound_color = self.terminal_codes.get("text_error", "")
+                plural = "s" if unit.wound_count > 1 else ""
+                self._draw_text(grid, f"Wounds: {unit.wound_count} active injury{plural}", 
+                               x_offset + 2, y_offset + current_line, width - 4, wound_color, colors)
+                current_line += 1
+                
+                # Show wound details in full mode
+                if not compact and unit.wound_descriptions:
+                    for i, wound_desc in enumerate(unit.wound_descriptions[:3]):  # Show max 3 wounds
+                        # Truncate if too long
+                        if len(wound_desc) > width - 6:
+                            wound_desc = wound_desc[:width - 9] + "..."
+                        icon = "🩸" if i == 0 else " "
+                        self._draw_text(grid, f"{icon} {wound_desc}", 
+                                       x_offset + 2, y_offset + current_line, width - 4, wound_color, colors)
+                        current_line += 1
+                        
+                    # Show "and X more" if there are additional wounds
+                    if len(unit.wound_descriptions) > 3:
+                        remaining = len(unit.wound_descriptions) - 3
+                        self._draw_text(grid, f"  ...and {remaining} more", 
+                                       x_offset + 2, y_offset + current_line, width - 4, wound_color, colors)
+                        current_line += 1
+            else:
+                self._draw_text(grid, "Wounds: None", x_offset + 2, y_offset + current_line, width - 4, "", colors)
+                current_line += 1
         else:
             self._draw_text(grid, "No unit", x_offset + 2, y_offset + 2, width - 4, "", colors)
         
@@ -456,7 +625,12 @@ class TerminalRenderer(Renderer):
         current_team_name = team_names.get(context.current_team, "Unknown")
         
         self._draw_text(grid, f"Turn: {context.current_turn}", x_offset + 2, y_offset + 2, width - 4, "", colors)
-        self._draw_text(grid, f"Phase: {current_team_name}", x_offset + 2, y_offset + 3, width - 4, "", colors)
+        self._draw_text(grid, f"Team: {current_team_name}", x_offset + 2, y_offset + 3, width - 4, "", colors)
+        
+        # Add game phase and battle phase for debugging
+        self._draw_text(grid, f"Game Phase: {context.game_phase}", x_offset + 2, y_offset + 4, width - 4, "", colors)
+        battle_phase = context.battle_phase if context.battle_phase else "None"
+        self._draw_text(grid, f"Battle Phase: {battle_phase}", x_offset + 2, y_offset + 5, width - 4, "", colors)
         
         return panel_height
     
@@ -499,6 +673,79 @@ class TerminalRenderer(Renderer):
             colors[y][x + i] = self.terminal_codes["text_dim"]
             if y + height - 1 < len(grid):
                 colors[y + height - 1][x + i] = self.terminal_codes["text_dim"]
+    
+    def _render_timeline(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
+                        x_offset: int, y_offset: int, width: int) -> None:
+        """Render timeline visualization at the top of the screen."""
+        if not context.timeline or not context.timeline.entries:
+            return
+        
+        timeline_text = []
+        remaining_width = width
+        
+        # Show "NOW →" indicator
+        now_indicator = "NOW → "
+        timeline_text.append(now_indicator)
+        remaining_width -= len(now_indicator)
+        
+        for i, entry in enumerate(context.timeline.entries):
+            if remaining_width <= 10:  # Need space for at least one more entry
+                timeline_text.append("...")
+                break
+                
+            # Build entry text: [Icon Name Action (+weight)]
+            entry_parts = []
+            
+            # Add icon and name
+            entry_parts.append(f"{entry.icon} {entry.entity_name[:8]}")  # Limit name length
+            
+            # Add action description (abbreviated if hidden)
+            if entry.is_hidden_intent:
+                entry_parts.append("???")
+            else:
+                action = entry.action_description[:12]  # Limit action length
+                entry_parts.append(action)
+            
+            # Add weight if showing weights
+            if context.timeline.show_weights:
+                entry_parts.append(f"(+{entry.action_weight})")
+            
+            entry_text = " ".join(entry_parts)
+            
+            # Check if this entry fits
+            separator = " → " if i < len(context.timeline.entries) - 1 else ""
+            full_entry_text = f"[ {entry_text} ]{separator}"
+            
+            if len(full_entry_text) > remaining_width:
+                timeline_text.append("...")
+                break
+            
+            timeline_text.append(f"[ {entry_text} ]")
+            remaining_width -= len(full_entry_text)
+            
+            # Add separator if not last entry
+            if i < len(context.timeline.entries) - 1 and remaining_width > 3:
+                timeline_text.append(" → ")
+                remaining_width -= 3
+        
+        # Join all parts and render
+        full_timeline_text = "".join(timeline_text)
+        
+        # Truncate if still too long
+        if len(full_timeline_text) > width:
+            full_timeline_text = full_timeline_text[:width-3] + "..."
+        
+        # Render the timeline text
+        for i, char in enumerate(full_timeline_text):
+            if x_offset + i < width:
+                grid[y_offset][x_offset + i] = char
+                # Color code based on teams and special indicators
+                if char in "⚔🏃🛡🔥":  # Icons
+                    colors[y_offset][x_offset + i] = self.terminal_codes["text_warning"]
+                elif "???" in full_timeline_text[max(0, i-2):i+3]:  # Hidden intents
+                    colors[y_offset][x_offset + i] = self.terminal_codes["text_dim"]
+                elif "NOW" in full_timeline_text[max(0, i-3):i+1]:  # NOW indicator
+                    colors[y_offset][x_offset + i] = self.terminal_codes["text_success"]
     
     def _draw_text(self, grid: list[list[str]], text: str, x: int, y: int, max_width: int, color: str = "", colors: Optional[list[list[str]]] = None) -> None:
         """Draw text at the specified position, truncating if needed."""
@@ -546,16 +793,16 @@ class TerminalRenderer(Renderer):
                     if x_offset + j < len(grid[0]):
                         grid[y_offset][x_offset + j] = char
     
-    def _render_item(self, item, grid, colors, context, max_width=None, max_height=None):
+    def _render_item(self, item, grid, colors, context, max_width=None, max_height=None, y_offset=0):
         vx = context.viewport_x
         vy = context.viewport_y
         vw = max_width if max_width else self.config.width
         vh = max_height if max_height else self.config.height - 3
         
         screen_x = item.position.x - vx
-        screen_y = item.position.y - vy
+        screen_y = item.position.y - vy + y_offset
         
-        if 0 <= screen_x < vw and 0 <= screen_y < vh:
+        if 0 <= screen_x < vw and 0 <= screen_y - y_offset < vh:
             if isinstance(item, TileRenderData):
                 # Get symbol from renderer's own terrain mapping
                 symbol = self.terrain_symbols.get(item.terrain_type, "?")
@@ -698,11 +945,32 @@ class TerminalRenderer(Renderer):
         """Render battle forecast popup onto the character grid."""
         forecast_lines = []
         forecast_lines.append('┌' + '─' * (forecast.width - 2) + '┐')
-        forecast_lines.append('│ Battle Forecast    │')
+        forecast_lines.append('│ Battle Forecast          │')
         forecast_lines.append('├' + '─' * (forecast.width - 2) + '┤')
-        forecast_lines.append(f'│ {forecast.attacker_name} ▶ {forecast.defender_name}   │'[:forecast.width-2].ljust(forecast.width-2) + '│')
-        forecast_lines.append(f'│ Dmg {forecast.damage}  Hit {forecast.hit_chance}%   │'[:forecast.width-2].ljust(forecast.width-2) + '│')
-        forecast_lines.append(f'│ Crit {forecast.crit_chance}%  Cntr {"Yes" if forecast.can_counter else "No"} │'[:forecast.width-2].ljust(forecast.width-2) + '│')
+        
+        # Unit matchup line
+        matchup = f'│ {forecast.attacker_name} ▶ {forecast.defender_name}'
+        forecast_lines.append(matchup[:forecast.width-2].ljust(forecast.width-2) + '│')
+        
+        # Damage range line
+        if forecast.min_damage == forecast.max_damage:
+            damage_text = f'│ Dmg: {forecast.damage}  Hit: {forecast.hit_chance}%'
+        else:
+            damage_text = f'│ Dmg: {forecast.min_damage}-{forecast.max_damage}  Hit: {forecast.hit_chance}%'
+        forecast_lines.append(damage_text[:forecast.width-2].ljust(forecast.width-2) + '│')
+        
+        # Crit and counter info
+        crit_counter_text = f'│ Crit: {forecast.crit_chance}%  Counter: {"Yes" if forecast.can_counter else "No"}'
+        forecast_lines.append(crit_counter_text[:forecast.width-2].ljust(forecast.width-2) + '│')
+        
+        # Counter damage line if applicable
+        if forecast.can_counter:
+            if forecast.counter_min_damage == forecast.counter_max_damage:
+                counter_text = f'│ Counter Dmg: {forecast.counter_damage}'
+            else:
+                counter_text = f'│ Counter Dmg: {forecast.counter_min_damage}-{forecast.counter_max_damage}'
+            forecast_lines.append(counter_text[:forecast.width-2].ljust(forecast.width-2) + '│')
+        
         forecast_lines.append('└' + '─' * (forecast.width - 2) + '┘')
         
         # Render forecast lines onto the grid
@@ -780,7 +1048,7 @@ class TerminalRenderer(Renderer):
         for y in range(overlay.y, min(overlay.y + overlay.height, len(grid))):
             for x in range(overlay.x, min(overlay.x + overlay.width, len(grid[0]))):
                 grid[y][x] = ' '
-                colors[y][x] = "\033[44;37m"  # Blue background, white text
+                colors[y][x] = "\033[48;5;19;37m"  # Dark blue background, white text
         
         # Render border
         for i in range(overlay.width):
@@ -865,9 +1133,10 @@ class TerminalRenderer(Renderer):
             
             if key == '\x1b':
                 next_chars = sys.stdin.read(2)
+                
                 if next_chars == '[A':
                     events.append(InputEvent.key_press(Key.UP))
-                elif next_chars == '[B':
+                elif next_chars == '[B':  
                     events.append(InputEvent.key_press(Key.DOWN))
                 elif next_chars == '[C':
                     events.append(InputEvent.key_press(Key.RIGHT))
@@ -883,7 +1152,7 @@ class TerminalRenderer(Renderer):
             elif key == '\t':
                 events.append(InputEvent.key_press(Key.TAB))
             elif key == 'q' or key == 'Q':
-                events.append(InputEvent.quit_event())
+                events.append(InputEvent.key_press(Key.Q))
             # Strategic action keys (handle before movement to avoid conflicts)
             elif key == 'a' or key == 'A':
                 events.append(InputEvent.key_press(Key.A))  # Attack
@@ -895,15 +1164,10 @@ class TerminalRenderer(Renderer):
                 events.append(InputEvent.key_press(Key.O))  # Objectives
             elif key == 'm' or key == 'M':
                 events.append(InputEvent.key_press(Key.M))  # Minimap
+            elif key == 'l' or key == 'L':
+                events.append(InputEvent.key_press(Key.L))  # Expanded log
             elif key == '?':
                 events.append(InputEvent.key_press(Key.HELP))  # Help
-            # Movement keys (only s and d now, since a and w are handled above)
-            elif key in 'sdSD':
-                direction_map = {
-                    's': Key.DOWN, 'S': Key.DOWN,
-                    'd': Key.RIGHT, 'D': Key.RIGHT,
-                }
-                events.append(InputEvent.key_press(direction_map[key]))
             elif key in 'xzXZ':
                 action_map = {
                     'z': Key.Z, 'Z': Key.Z,
@@ -915,4 +1179,442 @@ class TerminalRenderer(Renderer):
                 events.append(InputEvent.key_press(key_enum))
         
         return events
+    
+    # ============== New 4-Panel Layout Rendering Methods ==============
+    
+    def _render_timeline_panel(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
+                             x_offset: int, y_offset: int, width: int, height: int) -> None:
+        """Render the enhanced timeline panel for the 4-panel layout."""
+        if not context.timeline or height < 2:
+            return
+        
+        timeline = context.timeline
+        
+        # Title line with phase debug info
+        game_phase = context.game_phase if hasattr(context, 'game_phase') else "UNKNOWN"
+        battle_phase = context.battle_phase if hasattr(context, 'battle_phase') and context.battle_phase else "None"
+        title = f" TIMELINE | {game_phase}/{battle_phase} "
+        title_x = max(0, (width - len(title)) // 2)
+        
+        # Truncate title if it's too long for the panel
+        if len(title) > width:
+            title = f" TL | {game_phase[:4]}/{battle_phase[:4] if battle_phase != 'None' else 'None'} "
+            if len(title) > width:
+                title = f" TL | {game_phase[:3]} "
+        
+        for i, char in enumerate(title):
+            if i < width and x_offset + title_x + i < len(grid[0]) and y_offset < len(grid):
+                grid[y_offset][x_offset + title_x + i] = char
+                colors[y_offset][x_offset + title_x + i] = self.terminal_codes["text_normal"]
+        
+        # Timeline entries line
+        if len(timeline.entries) > 0 and height >= 2:
+            entries_line = []
+            for i, entry in enumerate(timeline.entries[:6]):  # Show up to 6 entries
+                
+                # Renderer decides icons based on unit class/action
+                icon = self._get_timeline_icon(entry)
+                name = entry.entity_name
+                
+                if entry.visibility == "hidden":
+                    name = "???"
+                    action = "??? Hidden Action"
+                elif entry.visibility == "partial":
+                    action = "???"
+                else:
+                    action = entry.action_description
+                
+                
+                # Format with ticks remaining if > 0
+                if entry.ticks_remaining > 0:
+                    entry_text = f"[ {name} {icon} {action} ({entry.ticks_remaining} ticks) ]"
+                else:
+                    entry_text = f"[ {name} {icon} {action} ]"
+                
+                entries_line.append(entry_text)
+                
+                if i < len(timeline.entries) - 1:
+                    entries_line.append(" → ")
+            
+            # Render timeline entries (truncate if too long)
+            timeline_text = "".join(entries_line)[:width-2]
+            for i, char in enumerate(timeline_text):
+                if x_offset + 1 + i < len(grid[0]) and y_offset + 1 < len(grid):
+                    grid[y_offset + 1][x_offset + 1 + i] = char
+                    colors[y_offset + 1][x_offset + 1 + i] = self.terminal_codes["text_normal"]
+        elif len(timeline.entries) == 0:
+            # Show "No units" when there are no timeline entries
+            no_entries_text = "No active units"
+            for i, char in enumerate(no_entries_text):
+                if x_offset + 1 + i < len(grid[0]) and y_offset + 1 < len(grid):
+                    grid[y_offset + 1][x_offset + 1 + i] = char
+                    colors[y_offset + 1][x_offset + 1 + i] = self.terminal_codes["text_normal"]
+    
+    def _get_timeline_icon(self, entry) -> str:
+        """Determine timeline icon based on entry data."""
+        # If renderer-specific icon is provided, use it
+        if entry.icon:
+            return entry.icon
+        
+        # Otherwise, decide based on entry data
+        if entry.entity_type == "unit":
+            # Determine by action first
+            action_lower = entry.action_description.lower()
+            if "attack" in action_lower:
+                return "⚔"
+            elif "move" in action_lower:
+                return "🏃"
+            elif "prepare" in action_lower or "ready" in action_lower:
+                return "🛡"
+            elif "acted" in action_lower:
+                return "✓"
+            else:
+                return "⚔"
+        elif entry.entity_type == "hazard":
+            return "🔥"
+        else:
+            return "⏳"
+    
+    def _render_battlefield_panel(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
+                                x_offset: int, y_offset: int, width: int, height: int) -> None:
+        """Render the battlefield panel (similar to the current map viewport)."""
+        # This is essentially the same as the current map rendering but positioned in the center panel
+        render_items = defaultdict(list)
+        
+        if context.tiles:
+            render_items[LayerType.TERRAIN].extend(context.tiles)
+        if context.overlays:
+            render_items[LayerType.OVERLAY].extend(context.overlays)
+        if context.attack_targets:
+            render_items[LayerType.OVERLAY].extend(context.attack_targets)
+        if context.units:
+            render_items[LayerType.UNITS].extend(context.units)
+        if context.cursor:
+            render_items[LayerType.UI].append(context.cursor)
+        
+        # Render battlefield elements
+        for layer in [LayerType.TERRAIN, LayerType.OVERLAY, LayerType.UNITS, LayerType.UI]:
+            for item in render_items[layer]:
+                self._render_battlefield_item(item, grid, colors, context, width, height, x_offset, y_offset)
+    
+    def _render_battlefield_item(self, item, grid, colors, context, max_width, max_height, x_offset=0, y_offset=0):
+        """Render a single item in the battlefield panel."""
+        vx = context.viewport_x
+        vy = context.viewport_y
+        
+        screen_x = item.position.x - vx + x_offset
+        screen_y = item.position.y - vy + y_offset
+        
+        if 0 <= screen_x - x_offset < max_width and 0 <= screen_y - y_offset < max_height:
+            if isinstance(item, TileRenderData):
+                symbol = self.terrain_symbols.get(item.terrain_type, "?")
+                if screen_y < len(grid) and screen_x < len(grid[0]):
+                    grid[screen_y][screen_x] = symbol
+                    if item.highlight:
+                        colors[screen_y][screen_x] = self.ui_colors.get(item.highlight, "")
+                    else:
+                        color = self.terrain_colors.get(item.terrain_type, "")
+                        if color:
+                            colors[screen_y][screen_x] = color
+            
+            elif isinstance(item, OverlayTileRenderData):
+                # Enhanced overlay rendering with new tactical overlays
+                symbol = item.symbol_override or self.ui_symbols.get(f"{item.overlay_type}_overlay", "?")
+                
+                # Special symbols for new overlay types
+                if item.overlay_type == "charge_path" and item.direction:
+                    if item.direction == "north":
+                        symbol = "↑"
+                    elif item.direction == "south":
+                        symbol = "↓"
+                    elif item.direction == "east":
+                        symbol = "→"
+                    elif item.direction == "west":
+                        symbol = "←"
+                elif item.overlay_type == "interrupt_arc":
+                    symbol = "◊"  # Diamond for interrupt zones
+                elif item.overlay_type == "aoe_preview":
+                    symbol = "◯"  # Circle for AoE preview
+                
+                if screen_y < len(grid) and screen_x < len(grid[0]):
+                    grid[screen_y][screen_x] = symbol
+                    color = item.color_hint or self.ui_colors.get(item.overlay_type, "")
+                    if color:
+                        colors[screen_y][screen_x] = color
+            
+            elif isinstance(item, UnitRenderData):
+                symbol = self.unit_symbols.get(item.unit_type.lower(), "?")
+                if screen_y < len(grid) and screen_x < len(grid[0]):
+                    grid[screen_y][screen_x] = symbol
+                    
+                    # Preserve background colors from overlays/attack targets
+                    current_color = colors[screen_y][screen_x] or ""
+                    unit_color = self.team_colors.get(item.team, "")
+                    
+                    # Check if this position has attack target background
+                    has_attack_background = (self.attack_colors["range_subtle"] in current_color or 
+                                           self.attack_colors["aoe_red"] in current_color)
+                    
+                    if has_attack_background:
+                        # Preserve attack target background, set unit foreground color
+                        if self.attack_colors["aoe_red"] in current_color:
+                            colors[screen_y][screen_x] = self.attack_colors["aoe_red"] + self.attack_colors["text_white"]
+                        else:
+                            colors[screen_y][screen_x] = self.attack_colors["range_subtle"] + unit_color
+                    else:
+                        # No background overlay, use normal unit color
+                        colors[screen_y][screen_x] = unit_color
+                    
+                    # Track cursor position for highlighting
+                    if hasattr(context, 'cursor_x') and hasattr(context, 'cursor_y'):
+                        if item.position.x == context.cursor_x and item.position.y == context.cursor_y:
+                            self._cursor_position = (screen_x, screen_y)
+            
+            elif isinstance(item, CursorRenderData):
+                # Render cursor in battlefield
+                if screen_y < len(grid) and screen_x < len(grid[0]):
+                    # Store cursor position for later highlighting
+                    self._cursor_position = (screen_x, screen_y)
+            
+            elif hasattr(item, 'target_type'):  # AttackTargetRenderData
+                # Handle AOE and attack target overlays
+                if screen_y < len(grid) and screen_x < len(grid[0]):
+                    # Store original color before modifying
+                    original_color = colors[screen_y][screen_x]
+                    
+                    if item.target_type == "range":
+                        # Subtle dark red background for attack range
+                        colors[screen_y][screen_x] = self.attack_colors["range_subtle"] + original_color
+                    elif item.target_type == "aoe":
+                        # AOE tiles: blink between normal and red background with white symbol
+                        if item.blink_phase:
+                            colors[screen_y][screen_x] = self.attack_colors["aoe_red"] + self.attack_colors["text_white"]
+                        else:
+                            colors[screen_y][screen_x] = self.attack_colors["range_subtle"] + original_color
+                    elif item.target_type == "selected":
+                        # Selected tile: blink between normal and red background with black X
+                        if item.blink_phase:
+                            grid[screen_y][screen_x] = "X"
+                            colors[screen_y][screen_x] = self.attack_colors["aoe_red"] + self.attack_colors["text_black"]
+                        else:
+                            colors[screen_y][screen_x] = self.attack_colors["range_subtle"] + original_color
+                    elif item.target_type == "aoe_preview":
+                        # AoE preview overlay
+                        colors[screen_y][screen_x] = self.attack_colors["aoe_red"] + self.attack_colors["text_white"]
+    
+    def _render_unit_info_panel(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
+                              x_offset: int, y_offset: int, width: int, height: int) -> None:
+        """Render the unit info panel for the 4-panel layout."""
+        panel = context.unit_info_panel
+        if not panel or height < 4:
+            return
+        
+        lines = []
+        
+        # Check if this is tile info (HP = 0) or unit info  
+        is_tile_info = (panel.hp_max == 0)
+        
+        if is_tile_info:
+            # Tile information display
+            lines.append(f"{panel.unit_name}")  # "Tile Info"
+            lines.append(f"{panel.unit_class}")  # Terrain name
+            
+            # Show tile properties (stored in status_effects)
+            if panel.status_effects:
+                for prop in panel.status_effects:
+                    lines.append(prop)
+        else:
+            # Unit information display  
+            lines.append(f"{panel.unit_name} — {panel.unit_class}")
+            
+            # HP and mana
+            hp_line = panel.get_hp_display()
+            if panel.has_mana:
+                mana_line = panel.get_mana_display()
+                lines.append(f"{hp_line}     {mana_line}")
+            else:
+                lines.append(hp_line)
+            
+            # Status effects
+            if panel.status_effects:
+                lines.append(f"Status: {', '.join(panel.status_effects)}")
+            
+            # Wounds
+            if panel.wounds:
+                lines.append(f"Wounds: {', '.join(panel.wounds)}")
+            
+            # Next action
+            lines.append(panel.get_next_action_display())
+        
+        # Render lines
+        for i, line in enumerate(lines[:height-1]):  # Leave space for borders
+            if y_offset + i < len(grid):
+                display_line = line[:width-2]  # Leave space for borders
+                for j, char in enumerate(display_line):
+                    if x_offset + 1 + j < len(grid[0]):
+                        grid[y_offset + i][x_offset + 1 + j] = char
+                        colors[y_offset + i][x_offset + 1 + j] = self.terminal_codes["text_normal"]
+    
+    def _render_action_menu_panel(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]], 
+                                x_offset: int, y_offset: int, width: int, height: int) -> None:
+        """Render the action menu panel for the 4-panel layout."""
+        panel = context.action_menu_panel
+        if not panel or height < 3:
+            return
+        
+        # Title (compact, inline with first item if needed for space)
+        title = "Actions"
+        title_line = f"{title}:"
+        if y_offset < len(grid):
+            for i, char in enumerate(title_line):
+                if x_offset + 1 + i < len(grid[0]):
+                    grid[y_offset][x_offset + 1 + i] = char
+                    colors[y_offset][x_offset + 1 + i] = self.terminal_codes["text_dim"]
+        
+        # Action items - use all available height minus title line
+        display_lines = panel.get_display_lines()
+        available_lines = height - 1  # Only reserve 1 line for title
+        
+        for i, line in enumerate(display_lines[:available_lines]):
+            if y_offset + 1 + i < len(grid):
+                # Reduce indentation - only 2 spaces from edge
+                indent = 2
+                # Trim line to fit width
+                max_line_width = width - indent - 1
+                display_line = line[:max_line_width]
+                
+                # Clear the line first to remove old content
+                for x in range(x_offset, min(x_offset + width, len(grid[0]))):
+                    grid[y_offset + 1 + i][x] = ' '
+                
+                # Write the action text
+                for j, char in enumerate(display_line):
+                    if x_offset + indent + j < len(grid[0]):
+                        grid[y_offset + 1 + i][x_offset + indent + j] = char
+                        # Highlight selected item
+                        if i == panel.selected_index:
+                            colors[y_offset + 1 + i][x_offset + indent + j] = self.terminal_codes["text_success"]
+                        else:
+                            colors[y_offset + 1 + i][x_offset + indent + j] = self.terminal_codes["text_normal"]
+    
+    def _render_log_panel(self, context: RenderContext, grid: list[list[str]], colors: list[list[str]],
+                         x_offset: int, y_offset: int, width: int, height: int) -> None:
+        """Render the message log panel."""
+        if not context.log_panel or width <= 2 or height <= 2:
+            return
+        
+        panel = context.log_panel
+        
+        # Bounds checking
+        if x_offset < 0 or y_offset < 0 or x_offset >= len(grid[0]) or y_offset >= len(grid):
+            return
+        
+        # Adjust dimensions to fit within grid
+        max_width = min(width, len(grid[0]) - x_offset)
+        max_height = min(height, len(grid) - y_offset)
+        
+        if max_width <= 2 or max_height <= 2:
+            return
+        
+        # Draw panel border using adjusted dimensions
+        for y in range(max_height):
+            for x in range(max_width):
+                grid_y = y_offset + y
+                grid_x = x_offset + x
+                
+                if grid_y >= len(grid) or grid_x >= len(grid[0]):
+                    continue
+                
+                # Top and bottom borders
+                if y == 0 or y == max_height - 1:
+                    grid[grid_y][grid_x] = '─'
+                    colors[grid_y][grid_x] = self.terminal_codes["text_dim"]
+                # Left and right borders
+                elif x == 0 or x == max_width - 1:
+                    grid[grid_y][grid_x] = '│'
+                    colors[grid_y][grid_x] = self.terminal_codes["text_dim"]
+        
+        # Corners
+        if y_offset < len(grid) and x_offset < len(grid[0]):
+            grid[y_offset][x_offset] = '╭'
+            colors[y_offset][x_offset] = self.terminal_codes["text_dim"]
+        if y_offset < len(grid) and x_offset + max_width - 1 < len(grid[0]):
+            grid[y_offset][x_offset + max_width - 1] = '╮'
+            colors[y_offset][x_offset + max_width - 1] = self.terminal_codes["text_dim"]
+        if y_offset + max_height - 1 < len(grid) and x_offset < len(grid[0]):
+            grid[y_offset + max_height - 1][x_offset] = '╰'
+            colors[y_offset + max_height - 1][x_offset] = self.terminal_codes["text_dim"]
+        if y_offset + max_height - 1 < len(grid) and x_offset + max_width - 1 < len(grid[0]):
+            grid[y_offset + max_height - 1][x_offset + max_width - 1] = '╯'
+            colors[y_offset + max_height - 1][x_offset + max_width - 1] = self.terminal_codes["text_dim"]
+        
+        # Render title
+        title = f" {panel.title} "
+        title_x = x_offset + 2
+        for i, char in enumerate(title):
+            if title_x + i < x_offset + max_width - 2 and title_x + i < len(grid[0]):
+                grid[y_offset][title_x + i] = char
+                colors[y_offset][title_x + i] = self.terminal_codes["text_bright"]
+        
+        # Add scroll indicators if needed
+        if panel.can_scroll_up() and max_width > 5:
+            scroll_up = " ▲ "
+            scroll_x = x_offset + max_width - 5
+            for i, char in enumerate(scroll_up):
+                if scroll_x + i < x_offset + max_width - 1 and scroll_x + i < len(grid[0]):
+                    grid[y_offset][scroll_x + i] = char
+                    colors[y_offset][scroll_x + i] = self.terminal_codes["text_yellow"]
+        
+        if panel.can_scroll_down() and max_width > 5:
+            scroll_down = " ▼ "
+            scroll_x = x_offset + max_width - 5
+            for i, char in enumerate(scroll_down):
+                if scroll_x + i < x_offset + max_width - 1 and scroll_x + i < len(grid[0]):
+                    grid[y_offset + max_height - 1][scroll_x + i] = char
+                    colors[y_offset + max_height - 1][scroll_x + i] = self.terminal_codes["text_yellow"]
+        
+        # Render messages
+        messages = panel.get_visible_messages()
+        content_start_y = y_offset + 1
+        content_width = max_width - 2  # Account for borders
+        
+        # Category color mapping
+        category_colors = {
+            "[SYS]": self.terminal_codes["text_normal"],
+            "[BTL]": self.terminal_codes["text_red"],
+            "[MOV]": self.terminal_codes["text_cyan"],
+            "[AI]": self.terminal_codes["text_magenta"],
+            "[TML]": self.terminal_codes["text_blue"],
+            "[INP]": self.terminal_codes["text_green"],
+            "[DBG]": self.terminal_codes["text_dim"],
+            "[WRN]": self.terminal_codes["text_yellow"],
+            "[ERR]": self.terminal_codes["text_bright_red"],
+            "[OBJ]": self.terminal_codes["text_bright_green"],
+            "[INT]": self.terminal_codes["text_bright_cyan"],
+            "[SCN]": self.terminal_codes["text_bright_blue"],
+            "[UI]": self.terminal_codes["text_white"],
+        }
+        
+        for i, message in enumerate(messages):
+            message_y = content_start_y + i
+            if message_y >= y_offset + max_height - 1:
+                break  # Don't overwrite bottom border
+            
+            # Truncate message if too long
+            if len(message) > content_width and content_width > 3:
+                message = message[:content_width - 3] + "..."
+            
+            # Find category tag color
+            message_color = self.terminal_codes["text_normal"]
+            for tag, color in category_colors.items():
+                if message.startswith(tag):
+                    message_color = color
+                    break
+            
+            # Render the message
+            for j, char in enumerate(message):
+                message_x = x_offset + 1 + j
+                if message_x < x_offset + max_width - 1 and message_x < len(grid[0]) and message_y < len(grid):
+                    grid[message_y][message_x] = char
+                    colors[message_y][message_x] = message_color
     

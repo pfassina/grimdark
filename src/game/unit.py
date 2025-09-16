@@ -5,15 +5,18 @@ while maintaining the exact same API as the original Unit class for backward
 compatibility.
 """
 
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 from ..core.game_enums import UnitClass, Team
 from ..core.data_structures import Vector2
 from .unit_templates import create_unit_entity
 from .components import (
     ActorComponent, HealthComponent, MovementComponent, 
-    CombatComponent, StatusComponent
+    CombatComponent, StatusComponent, InterruptComponent, AIComponent
 )
+
+if TYPE_CHECKING:
+    from .components import MoraleComponent, WoundComponent
 
 
 class Unit:
@@ -35,7 +38,8 @@ class Unit:
         unit.x = 5
         unit.hp_current = 20
         if unit.is_alive and unit.can_move:
-            unit.move_to(x, y)
+            # Note: Movement should be done via map.move_unit(unit.unit_id, position)
+            pass
         
         # Less frequent operations (component access)  
         unit.combat.strength = 10
@@ -134,6 +138,11 @@ class Unit:
         """Check if unit can move this turn."""
         return self._status.can_move()
     
+    @property
+    def status_effects(self) -> list[str]:
+        """Get list of active status effects. Placeholder until status system is implemented."""
+        return []
+    
     # ============== Component Access Properties ==============
     
     @property
@@ -194,12 +203,64 @@ class Unit:
         from typing import cast
         return cast(StatusComponent, self.entity.require_component("Status"))
     
+    @property
+    def _interrupt(self) -> InterruptComponent:
+        """Get Interrupt component (internal helper)."""
+        from typing import cast
+        return cast(InterruptComponent, self.entity.require_component("Interrupt"))
+    
+    @property
+    def _morale(self) -> "MoraleComponent":
+        """Get Morale component (internal helper)."""
+        from typing import cast
+        from .components import MoraleComponent
+        return cast(MoraleComponent, self.entity.require_component("Morale"))
+    
+    @property
+    def _wound(self) -> "WoundComponent":
+        """Get Wound component (internal helper)."""
+        from typing import cast
+        from .components import WoundComponent
+        return cast(WoundComponent, self.entity.require_component("Wound"))
+    
+    @property
+    def _ai(self) -> AIComponent:
+        """Get AI component (internal helper)."""
+        from typing import cast
+        return cast(AIComponent, self.entity.require_component("AI"))
+    
+    @property
+    def interrupt(self) -> InterruptComponent:
+        """Access Interrupt component for prepared actions and interrupts."""
+        return self._interrupt
+    
+    @property
+    def morale(self) -> "MoraleComponent":
+        """Access Morale component for psychological state management."""
+        return self._morale
+    
+    @property
+    def wound(self) -> "WoundComponent":
+        """Access Wound component for injury and scar management."""
+        return self._wound
+    
+    @property
+    def ai(self) -> AIComponent:
+        """Access AI component for behavior and decision-making."""
+        return self._ai
+    
     
     # ============== Methods (delegate to components) ==============
     
-    def move_to(self, position: Vector2) -> None:
-        """Move to new position."""
-        self.movement.move_to(position)
+    def update_position_and_status(self, position: Vector2) -> None:
+        """Update position and movement status. Does NOT update map occupancy.
+        
+        This method should only be called by the Map class during unit movement.
+        External code should use map.move_unit() instead.
+        """
+        old_position = self.position
+        self.movement.set_position(position)
+        self.movement.update_facing_from_movement(old_position, position)
         self.status.mark_moved()
     
     def take_damage(self, damage: int) -> None:

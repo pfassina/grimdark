@@ -28,6 +28,13 @@ _stat_defaults:
   very_fast_movement: &very_fast_movement
     movement_points: 5
 
+  # AI behavior defaults
+  aggressive_ai: &aggressive_ai
+    behavior: "AGGRESSIVE"
+  
+  inactive_ai: &inactive_ai
+    behavior: "INACTIVE"
+
 # Unit class templates
 unit_templates:
   KNIGHT:
@@ -42,6 +49,8 @@ unit_templates:
       defense: 5
     status:
       speed: 3
+    ai:
+      <<: *aggressive_ai
 
   ARCHER:
     # Ranged attacker with mobility
@@ -55,6 +64,8 @@ unit_templates:
       defense: 2
     status:
       speed: 6
+    ai:
+      <<: *aggressive_ai
 
   MAGE:
     # Magic user with cross AOE attack pattern
@@ -70,6 +81,8 @@ unit_templates:
       aoe_pattern: "cross"  # Cross pattern AOE (1 Manhattan distance)
     status:
       speed: 4
+    ai:
+      <<: *aggressive_ai
 
   PRIEST:
     # Support unit with healing/buffs potential
@@ -85,6 +98,8 @@ unit_templates:
       aoe_pattern: "single"
     status:
       speed: 3
+    ai:
+      <<: *inactive_ai  # Priests are more passive
 
   THIEF:
     # Fast, agile melee attacker
@@ -98,6 +113,8 @@ unit_templates:
       defense: 1
     status:
       speed: 8
+    ai:
+      <<: *aggressive_ai
 
   WARRIOR:
     # Balanced melee fighter
@@ -111,3 +128,5 @@ unit_templates:
       defense: 3
     status:
       speed: 5
+    ai:
+      <<: *aggressive_ai

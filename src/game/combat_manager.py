@@ -4,7 +4,7 @@ Combat management system for targeting, validation, and combat orchestration.
 This module handles combat UI, targeting logic, and coordinates between
 combat resolution and the game state.
 """
-from typing import TYPE_CHECKING, Optional, Callable
+from typing import TYPE_CHECKING, Optional
 
 from ..core.data_structures import Vector2, VectorArray
 
@@ -12,9 +12,13 @@ if TYPE_CHECKING:
     from .map import GameMap
     from .unit import Unit
     from ..core.game_state import GameState
+    from ..core.event_manager import EventManager
 
 from .battle_calculator import BattleCalculator
 from .combat_resolver import CombatResolver, CombatResult
+from ..core.events import (
+    AttackTargetingSetup, AttackResolved, ManagerInitialized, ActionExecuted, CursorMoved
+)
 
 
 class CombatManager:
@@ -24,17 +28,39 @@ class CombatManager:
         self, 
         game_map: "GameMap", 
         game_state: "GameState",
-        event_emitter: Optional[Callable] = None
+        event_manager: "EventManager"
     ):
         self.game_map = game_map
         self.state = game_state
-        self.resolver = CombatResolver(game_map)
+        self.event_manager = event_manager
+        self.resolver = CombatResolver(game_map, event_manager=event_manager)
         self.calculator = BattleCalculator()
-        self.emit_event = event_emitter or (lambda _: None)
+        
+        # Subscribe to cursor movement events for real-time targeting updates
+        from ..core.events import EventType
+        self.event_manager.subscribe(
+            EventType.CURSOR_MOVED,
+            self._handle_cursor_moved,
+            subscriber_name="CombatManager.cursor_moved"
+        )
+        
+        # Emit initialization event
+        self.event_manager.publish(
+            ManagerInitialized(turn=0, manager_name="CombatManager"),
+            source="CombatManager"
+        )
+        
+    def _handle_cursor_moved(self, event) -> None:
+        """Handle cursor movement events to update targeting in real-time."""
+        # Only update targeting if we're in attack targeting mode and have attack range set
+        if (self.state.battle.phase.name in ["ACTION_EXECUTION", "ACTION_TARGETING"] 
+            and self.state.battle.attack_range 
+            and event.context == "targeting"):
+            self.update_attack_targeting()
         
     def setup_attack_targeting(self, unit: "Unit") -> None:
         """Set up attack targeting for a unit."""
-        # Clear movement range and set attack range
+        # Clear movement range when entering attack targeting and set attack range
         self.state.battle.movement_range = VectorArray()
         attack_range = self.game_map.calculate_attack_range(unit)
         self.state.battle.set_attack_range(attack_range)
@@ -42,35 +68,55 @@ class CombatManager:
         # Set up targetable enemies for cycling
         self.refresh_targetable_enemies(unit)
         
-        # Position cursor on closest target
-        self.position_cursor_on_closest_target(unit)
+        # Position cursor on closest target only if enemies are available
+        if self.state.battle.targetable_enemies:
+            self.position_cursor_on_closest_target(unit)
         
         # Update targeting and AOE
         self.update_attack_targeting()
+        
+        # Emit attack targeting setup event
+        self.event_manager.publish(
+            AttackTargetingSetup(
+                turn=0,  # TODO: Get actual turn from game state
+                attacker_name=unit.name,
+                attacker_id=unit.unit_id,
+                attack_range_size=len(attack_range),
+                targetable_enemies=len(self.state.battle.targetable_enemies)
+            ),
+            source="CombatManager"
+        )
     
     def update_attack_targeting(self) -> None:
         """Update attack targeting based on cursor position."""
         if not self.state.battle.attack_range:
             return
 
+        # Refresh targetable enemies list to account for unit movement
+        if self.state.battle.selected_unit_id:
+            attacking_unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
+            if attacking_unit:
+                self.refresh_targetable_enemies(attacking_unit)
+
         cursor_pos = self.state.cursor.position
 
         # Check if cursor is over a valid attack target
         if cursor_pos in self.state.battle.attack_range:
             self.state.battle.selected_target = cursor_pos
-
-            # Calculate AOE tiles if we have a selected unit
-            if self.state.battle.selected_unit_id:
-                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-                if unit and hasattr(unit.combat, "aoe_pattern"):
-                    aoe_pattern = unit.combat.aoe_pattern
-                    self.state.battle.aoe_tiles = self.game_map.calculate_aoe_tiles(
-                        cursor_pos, aoe_pattern
-                    )
-                else:
-                    self.state.battle.aoe_tiles = VectorArray([cursor_pos])
         else:
             self.state.battle.selected_target = None
+
+        # Calculate AOE tiles for any position in attack range (including empty tiles)
+        if cursor_pos in self.state.battle.attack_range and self.state.battle.selected_unit_id:
+            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
+            if unit and hasattr(unit.combat, "aoe_pattern"):
+                aoe_pattern = unit.combat.aoe_pattern
+                self.state.battle.aoe_tiles = self.game_map.calculate_aoe_tiles(
+                    cursor_pos, aoe_pattern
+                )
+            else:
+                self.state.battle.aoe_tiles = VectorArray([cursor_pos])
+        else:
             self.state.battle.aoe_tiles = VectorArray()
     
     def execute_attack_at_cursor(self) -> bool:
@@ -159,8 +205,12 @@ class CombatManager:
         self.state.battle.set_targetable_enemies(targetable_ids)
     
     def position_cursor_on_closest_target(self, attacking_unit: "Unit") -> None:
-        """Position cursor on the closest targetable enemy unit."""
+        """Position cursor on the closest targetable enemy unit, or within attack range if no enemies."""
         if not self.state.battle.targetable_enemies:
+            # No enemies available - position cursor on first attack range tile
+            if self.state.battle.attack_range:
+                first_target = self.state.battle.attack_range[0]  # VectorArray supports indexing
+                self.state.cursor.set_position(first_target)
             return
         
         closest_target = None
@@ -256,19 +306,40 @@ class CombatManager:
     
     def _complete_attack(self, attacker: "Unit", result: CombatResult) -> None:
         """Complete attack processing after damage has been applied."""
-        # Emit defeat events for any defeated units
-        for target_name in result.defeated_targets:
-            target = next((t for t in result.targets_hit if t.name == target_name), None)
-            position = result.defeated_positions.get(target_name, (0, 0))
-            if target:
-                defeat_event = self.resolver.create_defeat_event(
-                    target.name, target.team, position, self.state.battle.current_turn
-                )
-                self.emit_event(defeat_event)
+        # Emit attack resolved event
+        self.event_manager.publish(
+            AttackResolved(
+                turn=0,  # TODO: Get actual turn
+                attacker_name=attacker.name,
+                target_names=[t.name for t in result.targets_hit],
+                total_damage=sum(result.damage_dealt.values()),
+                defeated_count=len(result.defeated_targets)
+            ),
+            source="CombatManager"
+        )
+        
+        # Note: UnitDefeated events are already published by CombatResolver during damage application
+        # No need to duplicate them here
         
         # Mark attacker as having acted and moved (can't do anything else)
         attacker.has_moved = True  # Prevent further movement after attacking
         attacker.has_acted = True  # Prevent further actions
+        
+        # Clear attack UI state (ranges, targeting, etc.)
+        self.clear_attack_state()
+        
+        # Emit action executed event to return to timeline processing
+        self.event_manager.publish(
+            ActionExecuted(
+                turn=self.state.battle.current_turn,
+                unit_name=attacker.name,
+                unit_id=attacker.unit_id,
+                action_name="Attack",
+                action_type="Attack",
+                success=True
+            ),
+            source="CombatManager"
+        )
         
     def clear_attack_state(self) -> None:
         """Clear all attack-related state data."""

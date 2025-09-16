@@ -12,10 +12,11 @@ from ..core.tileset_loader import get_tileset_config
 
 class SimpleRenderer(Renderer):
     
-    def __init__(self, config: Optional[RendererConfig] = None):
+    def __init__(self, config: Optional[RendererConfig] = None, demo_mode: bool = True):
         super().__init__(config)
         self._frame_count = 0
         self._auto_quit_at = 10
+        self._demo_mode = demo_mode  # Enable/disable auto input simulation
         # Load tileset configuration for gameplay data only
         self.tileset_config = get_tileset_config()
         
@@ -134,9 +135,32 @@ class SimpleRenderer(Renderer):
     def get_input_events(self) -> list[InputEvent]:
         events = []
         
+        # Only generate demo input if in demo mode
+        if not self._demo_mode:
+            return events  # Return empty list for interactive mode
+        
         if self._frame_count >= self._auto_quit_at:
             events.append(InputEvent.quit_event())
+        elif self._frame_count < 6 and self._frame_count % 2 == 0:
+            # First few frames, simulate movement
+            print(f"Demo frame {self._frame_count}: Movement simulation")
+            movement_keys = [Key.RIGHT, Key.DOWN, Key.LEFT]
+            key_index = (self._frame_count // 2) % len(movement_keys)
+            events.append(InputEvent.key_press(movement_keys[key_index]))
+        elif self._frame_count == 6:
+            # Confirm movement position
+            print(f"Demo frame {self._frame_count}: Confirming movement position")
+            events.append(InputEvent.key_press(Key.ENTER))
+        elif self._frame_count == 7:
+            # Navigate to Attack action to test attack range display
+            print(f"Demo frame {self._frame_count}: Navigate to Attack action")
+            events.append(InputEvent.key_press(Key.DOWN))  # Go to Attack
+        elif self._frame_count == 8:
+            # Select Attack action to test attack range
+            print(f"Demo frame {self._frame_count}: Selecting Attack action")
+            events.append(InputEvent.key_press(Key.ENTER))
         elif self._frame_count % 3 == 0:
+            # Continue with movement
             events.append(InputEvent.key_press(Key.RIGHT))
         
         return events

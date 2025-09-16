@@ -312,6 +312,29 @@ class DataConverter:
         """
         from ..core.renderable import UnitRenderData
         
+        # Extract wound information
+        wound_count = 0
+        wound_descriptions = []
+        wound_penalties = {}
+        if hasattr(unit, 'wound') and unit.wound:
+            wound_count = unit.wound.get_wound_count()
+            wound_penalties = unit.wound.get_wound_penalties()
+            
+            # Generate wound descriptions for display
+            for wound in unit.wound.active_wounds:
+                severity_text = wound.properties.severity.name.lower()
+                body_part_text = wound.properties.body_part.name.replace('_', ' ').lower()
+                wound_descriptions.append(f"{severity_text.title()} {body_part_text} {wound.properties.wound_type.name.lower()}")
+        
+        # Extract morale information
+        morale_current = 100
+        morale_state = "Steady"
+        morale_modifiers = {}
+        if hasattr(unit, 'morale') and unit.morale:
+            morale_current = unit.morale.get_effective_morale()
+            morale_state = unit.morale.get_morale_state()
+            morale_modifiers = unit.morale.temporary_modifiers.copy()
+        
         return UnitRenderData(
             position=unit.position,
             unit_type=unit.actor.get_class_name(),
@@ -327,7 +350,15 @@ class DataConverter:
             attack=unit.combat.strength,
             defense=unit.combat.defense,
             speed=unit.status.speed,
-            status_effects=[]  # Placeholder - would come from status effect system
+            status_effects=[],  # Placeholder - would come from status effect system
+            # Wound and injury information
+            wound_count=wound_count,
+            wound_descriptions=wound_descriptions,
+            wound_penalties=wound_penalties,
+            # Morale and psychological state
+            morale_current=morale_current,
+            morale_state=morale_state,
+            morale_modifiers=morale_modifiers
         )
     
     @staticmethod
@@ -371,6 +402,16 @@ class DataConverter:
                         unit.movement.movement_points = value
                     elif stat_name in ["speed"]:
                         unit.status.speed = value
+                    elif stat_name == "ai_behavior":
+                        # Override AI behavior - value should be string like "AGGRESSIVE" or "INACTIVE"
+                        from ..game.ai_behaviors import create_ai_behavior, AIType
+                        try:
+                            ai_type = getattr(AIType, value)
+                            ai_behavior = create_ai_behavior(ai_type)
+                            unit.ai.set_behavior(ai_behavior)
+                        except (AttributeError, ValueError):
+                            # Invalid AI behavior type - ignore or use default
+                            pass
         
         return unit
     

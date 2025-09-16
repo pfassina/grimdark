@@ -4,17 +4,21 @@ Combat resolution system for executing attacks and applying damage.
 This module handles the actual combat execution and damage application,
 separate from combat targeting and UI concerns.
 """
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
 from ..core.data_structures import Vector2
+from ..core.wounds import create_wound_from_damage, Wound
+from ..core.events import EventType, UnitAttacked
 
 if TYPE_CHECKING:
     from .map import GameMap
     from .unit import Unit
+    from .morale_manager import MoraleManager
+    from ..core.event_manager import EventManager
 
-from ..core.events import UnitDefeated
+from ..core.events import UnitDefeated, DamageApplied, LogMessage
 from ..core.game_enums import Team
 
 
@@ -26,14 +30,80 @@ class CombatResult:
         self.defeated_targets: list[str] = []
         self.defeated_positions: dict[str, tuple[int, int]] = {}
         self.damage_dealt: dict[str, int] = {}
+        self.wounds_inflicted: dict[str, list[Wound]] = {}  # unit_name -> list of wounds
         self.friendly_fire: bool = False
 
 
 class CombatResolver:
     """Handles actual combat execution and damage application."""
     
-    def __init__(self, game_map: "GameMap"):
+    def __init__(
+        self, 
+        game_map: "GameMap", 
+        event_manager: Optional["EventManager"] = None,
+        morale_manager: Optional["MoraleManager"] = None
+    ):
         self.game_map = game_map
+        self.event_manager = event_manager
+        self.morale_manager = morale_manager
+        
+        # Subscribe to UnitAttacked events for proper combat processing
+        if self.event_manager:
+            self.event_manager.subscribe(
+                EventType.UNIT_ATTACKED,
+                self._handle_unit_attacked,
+                subscriber_name="CombatResolver.unit_attacked"
+            )
+            self._emit_log("CombatResolver subscribed to UnitAttacked events", "COMBAT", "INFO")
+    
+    def _handle_unit_attacked(self, event) -> None:
+        """Handle UnitAttacked events by processing damage and checking for defeats."""
+        self._emit_log(f"CombatResolver received UnitAttacked event: {event.attacker_name} -> {event.target_name}", "COMBAT", "INFO")
+        
+        if not isinstance(event, UnitAttacked):
+            return
+            
+        # Get the attacker and target units
+        attacker = self.game_map.get_unit(event.attacker_id)
+        target = self.game_map.get_unit(event.target_id)
+        
+        self._emit_log(f"Looking up units: attacker={attacker is not None}, target={target is not None}", "COMBAT", "INFO")
+
+        if not attacker or not target:
+            self._emit_log("UnitAttacked event references missing units", "COMBAT", "WARNING")
+            return
+
+        self._emit_log(f"Base damage: {event.base_damage}, multiplier: {event.damage_multiplier}", "COMBAT", "INFO")
+
+        # Create a CombatResult and process the attack using proper combat mechanics
+        result = CombatResult()
+        result.targets_hit = [target]
+        
+        self._emit_log(f"About to apply damage to {target.name} using combat mechanics", "COMBAT", "INFO")
+
+        # Apply damage using vectorized processing (this will calculate proper damage)
+        self._apply_damage_to_targets(attacker, result)
+        
+        self._emit_log(f"Damage applied successfully", "COMBAT", "INFO")
+
+        # Log the attack
+        self._emit_log(
+            f"{event.attacker_name} → {event.target_name} ({final_damage} damage, {event.attack_type})"
+        )
+
+    def _emit_log(self, message: str, category: str = "BATTLE", level: str = "INFO") -> None:
+        """Emit a log message event."""
+        if self.event_manager:
+            self.event_manager.publish(
+                LogMessage(
+                    turn=0,  # TODO: Get actual turn from game state
+                    message=message,
+                    category=category,
+                    level=level,
+                    source="CombatResolver"
+                ),
+                source="CombatResolver"
+            )
         
     def execute_aoe_attack(
         self, 
@@ -68,8 +138,9 @@ class CombatResolver:
             target_teams = np.array([t.team.value for t in result.targets_hit], dtype=np.int8)
             result.friendly_fire = bool(np.any(target_teams == attacker.team.value))
             
-            # Apply damage to all targets
-            self._apply_damage_to_targets(attacker, result)
+            # Only apply damage if no friendly fire (damage will be applied later after confirmation)
+            if not result.friendly_fire:
+                self._apply_damage_to_targets(attacker, result)
             
         return result
     
@@ -94,8 +165,10 @@ class CombatResolver:
         # Check for friendly fire
         if target.team == attacker.team:
             result.friendly_fire = True
-            
-        self._apply_damage_to_targets(attacker, result)
+        
+        # Only apply damage if no friendly fire (damage will be applied later after confirmation)
+        if not result.friendly_fire:
+            self._apply_damage_to_targets(attacker, result)
         return result
     
     def _apply_damage_to_targets(self, attacker: "Unit", result: CombatResult) -> None:
@@ -103,9 +176,15 @@ class CombatResolver:
         if not result.targets_hit:
             return
             
-        # Vectorized damage calculation for all targets
+        # Vectorized damage calculation for all targets with variance
         target_defenses = np.array([t.combat.defense for t in result.targets_hit], dtype=np.int16)
-        damages = np.maximum(1, attacker.combat.strength - target_defenses // 2)
+        base_damages = np.maximum(1, attacker.combat.strength - target_defenses // 2)
+        
+        # Add damage variance (±25% of base damage, minimum 1)
+        # This creates the chaos-from-damage-variance mentioned in design doc
+        variance_ranges = np.maximum(1, base_damages // 4)  # 25% variance per target
+        variances = np.random.randint(-variance_ranges, variance_ranges + 1)  # +1 for inclusive upper bound
+        damages = np.maximum(1, base_damages + variances)
         
         # Vectorized HP updates
         current_hps = np.array([t.hp_current for t in result.targets_hit], dtype=np.int16)
@@ -122,7 +201,30 @@ class CombatResolver:
             damage = damages[idx]
             target.hp_current = new_hps[idx]
             result.damage_dealt[target.name] = int(damage)
-            print(f"{attacker.name} attacks {target.name} for {damage} damage!")
+            
+            # Generate wounds from damage dealt
+            wound = create_wound_from_damage(
+                damage=int(damage),
+                damage_type="physical",  # TODO: Get actual damage type from weapon/attack
+                target_unit=target,
+                source_unit=attacker
+            )
+            if wound:
+                # Store wound on the unit through its WoundComponent
+                target.wound.add_wound(wound)
+                
+                # Also track in result for reporting
+                if target.name not in result.wounds_inflicted:
+                    result.wounds_inflicted[target.name] = []
+                result.wounds_inflicted[target.name].append(wound)
+                # Log wound information without stat penalty details for now
+                self._emit_log(f"{target.name}: {wound.properties.wound_type.name.lower()} wound ({wound.properties.body_part.name.lower()})")
+            
+            # Process morale effects from taking damage
+            if self.morale_manager:
+                self.morale_manager.process_unit_damage(target.entity, int(damage), attacker.entity)
+                
+            self._emit_log(f"{attacker.name} → {target.name} ({damage} damage)")
         
         # Process defeated units in batch
         defeated_indices = np.where(defeated_mask)[0]
@@ -137,18 +239,55 @@ class CombatResolver:
                 result.defeated_targets.append(target.name)
                 result.defeated_positions[target.name] = (target.position.x, target.position.y)
                 defeated_unit_ids.append(target.unit_id)
-                print(f"{attacker.name} defeats {target.name}!")
+                
+                # Generate wounds from fatal damage (likely severe/critical wounds)
+                wound = create_wound_from_damage(
+                    damage=int(damage),
+                    damage_type="physical",  # TODO: Get actual damage type from weapon/attack
+                    target_unit=target,
+                    source_unit=attacker
+                )
+                if wound:
+                    # Store wound on the unit through its WoundComponent (even if defeated)
+                    target.wound.add_wound(wound)
+                    
+                    # Also track in result for reporting
+                    if target.name not in result.wounds_inflicted:
+                        result.wounds_inflicted[target.name] = []
+                    result.wounds_inflicted[target.name].append(wound)
+                    self._emit_log(f"{target.name}: Fatal {wound.properties.wound_type.name.lower()} wound")
+                
+                # Process morale effects from taking fatal damage and dying
+                if self.morale_manager:
+                    self.morale_manager.process_unit_damage(target.entity, int(damage), attacker.entity)
+                    self.morale_manager.process_unit_death(target.entity, attacker.entity)
+                
+                self._emit_log(f"{target.name}: Defeated")
+                
+                # Emit unit defeated event
+                if self.event_manager:
+                    self.event_manager.publish(
+                        UnitDefeated(
+                            turn=0,  # TODO: Get actual turn
+                            unit_name=target.name,
+                            unit_id=target.unit_id,
+                            team=target.team,
+                            position=(target.position.x, target.position.y)
+                        ),
+                        source="CombatResolver"
+                    )
             
             # Batch remove all defeated units in a single operation
             self.game_map.remove_units_batch(defeated_unit_ids)
         
         # Show summary if multiple targets
         if len(result.targets_hit) > 1:
-            print(f"{attacker.name}'s {attacker.combat.aoe_pattern} attack hits {len(result.targets_hit)} targets!")
+            self._emit_log(f"{attacker.name}: {attacker.combat.aoe_pattern} → {len(result.targets_hit)} targets")
     
     def create_defeat_event(
         self, 
         unit_name: str, 
+        unit_id: str,
         team: Team, 
         position: tuple[int, int], 
         turn: int
@@ -157,6 +296,7 @@ class CombatResolver:
         return UnitDefeated(
             turn=turn,
             unit_name=unit_name,
+            unit_id=unit_id,
             team=team,
             position=position,
         )

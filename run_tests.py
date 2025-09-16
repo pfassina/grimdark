@@ -1,16 +1,17 @@
 #!/usr/bin/env python3
 """
-Test runner script for the grimdark test suite.
+Simple test runner for the grimdark timeline-based game.
 
-Provides convenient ways to run different types of tests with appropriate
-configurations and reporting.
+Provides a straightforward way to run unit tests for the new architecture.
+Focuses on simplicity and ease of use rather than complex test categories.
 """
+
 import sys
-import argparse
 import subprocess
+import argparse
 
 
-def run_command(cmd: list, description: str):
+def run_command(cmd: list[str], description: str) -> bool:
     """Run a command and handle errors."""
     print(f"=== {description} ===")
     print(f"Running: {' '.join(cmd)}")
@@ -30,116 +31,115 @@ def run_command(cmd: list, description: str):
         return False
 
 
-def run_unit_tests():
-    """Run unit tests."""
-    cmd = ["nix", "develop", "--command", "pytest", "tests/unit/", "-v", "--tb=short"]
+def run_unit_tests(verbose: bool = True) -> bool:
+    """Run all unit tests."""
+    cmd = ["nix", "develop", "--command", "pytest", "tests/"]
+    if verbose:
+        cmd.append("-v")
     return run_command(cmd, "Unit Tests")
 
 
-def run_integration_tests():
-    """Run integration tests."""
-    cmd = ["nix", "develop", "--command", "pytest", "tests/integration/", "-v", "--tb=short", "-m", "integration"]
-    return run_command(cmd, "Integration Tests")
+def run_specific_test(test_file: str, verbose: bool = True) -> bool:
+    """Run a specific test file."""
+    cmd = ["nix", "develop", "--command", "pytest", f"tests/{test_file}"]
+    if verbose:
+        cmd.append("-v")
+    return run_command(cmd, f"Test: {test_file}")
 
 
-def run_performance_tests():
-    """Run performance benchmarks."""
-    cmd = ["nix", "develop", "--command", "pytest", "tests/performance/", "-v", "--tb=short", "-m", "performance", "--benchmark-only"]
-    return run_command(cmd, "Performance Benchmarks")
-
-
-def run_all_tests():
-    """Run all tests with coverage."""
-    cmd = ["nix", "develop", "--command", "pytest", "tests/", "-v", "--tb=short", "--cov=src", "--cov-report=term-missing", "--cov-report=html"]
-    return run_command(cmd, "All Tests with Coverage")
-
-
-def run_quick_tests():
-    """Run quick tests (unit tests only, no slow tests)."""
-    cmd = ["nix", "develop", "--command", "pytest", "tests/unit/", "-v", "--tb=short", "-m", "not slow"]
-    return run_command(cmd, "Quick Tests")
-
-
-def run_code_quality():
-    """Run code quality checks."""
-    success = True
-    
-    # Type checking with pyright
-    cmd = ["nix", "develop", "--command", "pyright", "."]
-    success &= run_command(cmd, "Type Checking (pyright)")
-    
-    # Linting with ruff
+def run_lint_check() -> bool:
+    """Run code linting with ruff."""
     cmd = ["nix", "develop", "--command", "ruff", "check", "."]
-    success &= run_command(cmd, "Code Linting (ruff)")
-    
-    # Check for unused parameters
-    cmd = ["nix", "develop", "--command", "ruff", "check", ".", "--select", "ARG"]
-    success &= run_command(cmd, "Unused Parameters Check")
-    
-    return success
+    return run_command(cmd, "Code Linting (Ruff)")
 
 
+def run_type_check() -> bool:
+    """Run type checking with pyright."""
+    cmd = ["nix", "develop", "--command", "pyright", "."]
+    return run_command(cmd, "Type Checking (Pyright)")
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Run grimdark test suite")
-    parser.add_argument("--unit", action="store_true", help="Run unit tests")
-    parser.add_argument("--integration", action="store_true", help="Run integration tests")
-    parser.add_argument("--performance", action="store_true", help="Run performance benchmarks")
-    parser.add_argument("--all", action="store_true", help="Run all tests with coverage")
-    parser.add_argument("--quick", action="store_true", help="Run quick tests (unit tests, no slow tests)")
-    parser.add_argument("--quality", action="store_true", help="Run code quality checks")
-    parser.add_argument("--ci", action="store_true", help="Run full CI pipeline")
+    """Main test runner function."""
+    parser = argparse.ArgumentParser(
+        description="Simple test runner for grimdark SRPG",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python run_tests.py                    # Run all unit tests
+  python run_tests.py --quiet            # Run tests with minimal output
+  python run_tests.py --test timeline    # Run specific test file
+  python run_tests.py --lint             # Run linting only
+  python run_tests.py --types            # Run type checking only
+  python run_tests.py --all              # Run tests, linting, and type checking
+        """
+    )
+    
+    parser.add_argument(
+        "--test", 
+        help="Run specific test file (e.g., 'timeline' for test_timeline.py)"
+    )
+    parser.add_argument(
+        "--quiet", "-q",
+        action="store_true",
+        help="Run with minimal output"
+    )
+    parser.add_argument(
+        "--lint",
+        action="store_true", 
+        help="Run code linting only"
+    )
+    parser.add_argument(
+        "--types",
+        action="store_true",
+        help="Run type checking only"
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Run tests, linting, and type checking"
+    )
     
     args = parser.parse_args()
     
-    if not any(vars(args).values()):
-        print("No test type specified. Running quick tests by default.")
-        print("Use --help to see available options.")
-        args.quick = True
-    
+    verbose = not args.quiet
     success = True
     
-    if args.unit:
-        success &= run_unit_tests()
-    
-    if args.integration:
-        success &= run_integration_tests()
-    
-    if args.performance:
-        success &= run_performance_tests()
-    
-    if args.all:
-        success &= run_all_tests()
-    
-    if args.quick:
-        success &= run_quick_tests()
-    
-    if args.quality:
-        success &= run_code_quality()
-    
-    if args.ci:
-        print("=== Running Full CI Pipeline ===")
-        success = True
+    if args.test:
+        # Run specific test
+        test_file = args.test
+        if not test_file.startswith("test_"):
+            test_file = f"test_{test_file}"
+        if not test_file.endswith(".py"):
+            test_file = f"{test_file}.py"
         
-        # 1. Code quality
-        success &= run_code_quality()
+        success = run_specific_test(test_file, verbose)
         
-        # 2. Unit tests
-        success &= run_unit_tests()
+    elif args.lint:
+        # Run linting only
+        success = run_lint_check()
         
-        # 3. Integration tests
-        success &= run_integration_tests()
+    elif args.types:
+        # Run type checking only
+        success = run_type_check()
         
-        # 4. Performance benchmarks (optional, don't fail CI)
-        print("=== Performance Benchmarks (informational) ===")
-        run_performance_tests()  # Don't affect CI success
+    elif args.all:
+        # Run everything
+        success = run_unit_tests(verbose)
+        if success:
+            success = run_lint_check()
+        if success:
+            success = run_type_check()
+            
+    else:
+        # Default: run unit tests
+        success = run_unit_tests(verbose)
     
     if success:
-        print("🎉 All requested tests passed!")
+        print("🎉 All operations completed successfully!")
         sys.exit(0)
     else:
-        print("💥 Some tests failed!")
+        print("💥 Some operations failed. See output above for details.")
         sys.exit(1)
 
 

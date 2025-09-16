@@ -1,0 +1,125 @@
+# Key Mappings Configuration
+# Users can customize these mappings without modifying code
+# Each context defines which keys are active and what actions they trigger
+
+# Available input contexts
+contexts:
+  battlefield:
+    name: "Main battlefield view"
+    description: "Default game state for moving units and taking actions"
+    mappings:
+      # Movement
+      UP: "move_cursor_up"
+      DOWN: "move_cursor_down"
+      LEFT: "move_cursor_left"
+      RIGHT: "move_cursor_right"
+      S: "move_cursor_down"    # Alternative movement
+      D: "move_cursor_right"   # Alternative movement
+      
+      # Actions
+      ENTER: "confirm_selection"
+      SPACE: "confirm_selection"
+      A: "direct_attack"
+      W: "wait_unit"
+      E: "end_turn"
+      TAB: "cycle_units"
+      
+      # Information screens
+      O: "show_objectives"
+      HELP: "show_help"
+      M: "show_minimap"
+      L: "show_expanded_log"
+      
+      # System
+      Q: "quit_game"
+      ESCAPE: "cancel_action"
+      X: "cancel_action"
+      Z: "confirm_selection"
+      V: "start_inspect_mode"
+
+  expanded_log:
+    name: "Expanded log viewer"
+    description: "Full-screen log with scrolling and debug controls"
+    mappings:
+      Q: "close_log"
+      D: "toggle_debug"        # D key for debug toggle
+      S: "save_log"            # S key for save log
+      UP: "scroll_up"          # UP key to scroll up (older messages)
+      DOWN: "scroll_down"      # DOWN key to scroll down (newer messages)
+
+  dialog:
+    name: "Confirmation dialog"
+    description: "Yes/No confirmation dialogs"
+    mappings:
+      LEFT: "dialog_move_left"
+      RIGHT: "dialog_move_right"
+      ENTER: "dialog_confirm"
+      SPACE: "dialog_confirm"
+      ESCAPE: "dialog_cancel"
+      X: "dialog_cancel"
+
+  action_menu:
+    name: "Unit action menu"
+    description: "Menu for selecting unit actions"
+    mappings:
+      UP: "menu_move_up"
+      DOWN: "menu_move_down"
+      ENTER: "menu_select"
+      SPACE: "menu_select"
+      ESCAPE: "menu_cancel"
+      X: "menu_cancel"
+
+  forecast:
+    name: "Battle forecast"
+    description: "Combat prediction overlay"
+    mappings:
+      # Any key closes forecast
+      ENTER: "close_forecast"
+      SPACE: "close_forecast"
+      ESCAPE: "close_forecast"
+
+  overlay:
+    name: "Information overlay"
+    description: "Help, objectives, minimap overlays"
+    mappings:
+      # Any key closes overlay
+      ENTER: "close_overlay"
+      SPACE: "close_overlay"
+      ESCAPE: "close_overlay"
+
+# Alternative key schemes (users can switch between these)
+schemes:
+  default:
+    name: "Default Controls"
+    description: "Standard arrow keys and letter shortcuts"
+    # Uses the contexts defined above
+
+  wasd:
+    name: "WASD Movement"
+    description: "WASD for movement, standard shortcuts"
+    overrides:
+      battlefield:
+        W: "move_cursor_up"
+        A: "move_cursor_left" 
+        S: "move_cursor_down"
+        D: "move_cursor_right"
+        # Attack becomes F key since A is now movement
+        F: "direct_attack"
+        # Wait becomes R key since W is now movement  
+        R: "wait_unit"
+
+  vim:
+    name: "Vim-style Navigation"
+    description: "hjkl movement keys for vim users"
+    overrides:
+      battlefield:
+        H: "move_cursor_left"
+        J: "move_cursor_down" 
+        K: "move_cursor_up"
+        L: "move_cursor_right"
+
+# Configuration metadata
+config:
+  version: "1.0"
+  active_scheme: "default"
+  allow_user_overrides: true

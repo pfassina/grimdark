@@ -24,54 +24,76 @@ class BattleCalculator:
         Returns:
             BattleForecastRenderData with all prediction values
         """
-        # Basic damage calculation
-        damage = BattleCalculator._calculate_damage(attacker, defender)
+        # Basic damage calculation (average)
+        damage = BattleCalculator._calculate_average_damage(attacker, defender)
         
-        # Hit chance calculation (simplified)
-        hit_chance = BattleCalculator._calculate_hit_chance(attacker, defender)
+        # Damage range calculation
+        min_damage, max_damage = BattleCalculator._calculate_damage_range(attacker, defender)
         
+        # No hit chance calculation - all attacks hit in new system
         # Critical hit chance calculation
         crit_chance = BattleCalculator._calculate_crit_chance(attacker, defender)
         
         # Counter-attack possibility
         can_counter = BattleCalculator._can_counter_attack(defender, weapon_range)
         counter_damage = 0
+        counter_min_damage = 0
+        counter_max_damage = 0
         if can_counter:
-            counter_damage = BattleCalculator._calculate_damage(defender, attacker)
+            counter_damage = BattleCalculator._calculate_average_damage(defender, attacker)
+            counter_min_damage, counter_max_damage = BattleCalculator._calculate_damage_range(defender, attacker)
         
         return BattleForecastRenderData(
             x=0, y=0,  # Position will be set by renderer
             attacker_name=f"{attacker.actor.get_class_name()}",
             defender_name=f"{defender.actor.get_class_name()}",
             damage=damage,
-            hit_chance=hit_chance,
+            hit_chance=100,  # All attacks hit in new system
             crit_chance=crit_chance,
             can_counter=can_counter,
-            counter_damage=counter_damage
+            counter_damage=counter_damage,
+            min_damage=min_damage,
+            max_damage=max_damage,
+            counter_min_damage=counter_min_damage,
+            counter_max_damage=counter_max_damage
         )
     
     @staticmethod
     def _calculate_damage(attacker: Unit, defender: Unit) -> int:
-        """Calculate expected damage from attacker to defender."""
-        # Basic formula: Strength - Defense, minimum 1
-        base_damage = max(1, attacker.combat.strength - defender.combat.defense)
+        """Calculate expected damage from attacker to defender with variance."""
+        import random
         
-        # Apply weapon effectiveness (placeholder - could be expanded)
-        # For now, just return base damage
+        # Basic formula: Strength - Defense/2, minimum 1 (matches combat_resolver.py)
+        base_damage = max(1, attacker.combat.strength - defender.combat.defense // 2)
+        
+        # Add damage variance (±25% of base damage, minimum 1)
+        # This creates the "6-10 instead of flat 8" variance mentioned in design
+        variance_range = max(1, base_damage // 4)  # 25% variance
+        variance = random.randint(-variance_range, variance_range)
+        final_damage = max(1, base_damage + variance)
+        
+        return final_damage
+    
+    @staticmethod
+    def _calculate_average_damage(attacker: Unit, defender: Unit) -> int:
+        """Calculate average damage without variance for forecast display."""
+        # Basic formula: Strength - Defense/2, minimum 1
+        base_damage = max(1, attacker.combat.strength - defender.combat.defense // 2)
         return base_damage
     
     @staticmethod
-    def _calculate_hit_chance(attacker: Unit, defender: Unit) -> int:
-        """Calculate hit chance percentage (0-100)."""
-        # Basic formula based on attacker speed vs defender speed
-        base_hit = 75  # Base hit rate
-        speed_difference = attacker.status.speed - defender.status.speed
+    def _calculate_damage_range(attacker: Unit, defender: Unit) -> tuple[int, int]:
+        """Calculate min and max damage range for forecast display."""
+        # Get base damage (no variance)
+        base_damage = max(1, attacker.combat.strength - defender.combat.defense // 2)
         
-        # Each speed point gives +2% hit
-        hit_chance = base_hit + (speed_difference * 2)
+        # Calculate variance range (±25% of base damage, minimum 1)
+        variance_range = max(1, base_damage // 4)  # 25% variance
         
-        # Clamp between 5% and 95%
-        return max(5, min(95, hit_chance))
+        min_damage = max(1, base_damage - variance_range)
+        max_damage = base_damage + variance_range
+        
+        return min_damage, max_damage
     
     @staticmethod
     def _calculate_crit_chance(attacker: Unit, defender: Unit) -> int:

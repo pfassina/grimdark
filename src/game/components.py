@@ -14,6 +14,11 @@ from ..core.data_structures import Vector2
 if TYPE_CHECKING:
     from ..core.components import Entity
     from ..core.game_info import UnitClassInfo
+    from .interrupt_system import PreparedAction
+    from ..core.wounds import Wound, WoundEffect
+    from .ai_behaviors import AIBehavior, AIDecision
+    from .map import GameMap
+    from ..core.timeline import Timeline
 
 
 class ActorComponent(Component):
@@ -201,15 +206,15 @@ class MovementComponent(Component):
         """
         self.position = position
     
-    def move_to(self, position: Vector2) -> None:
-        """Move to a new position and update facing direction.
+    def update_facing_from_movement(self, old_position: Vector2, new_position: Vector2) -> None:
+        """Update facing direction based on movement between positions.
         
         Args:
-            position: Target position vector
+            old_position: Previous position vector
+            new_position: New position vector
         """
-        # Update facing based on movement direction
-        dx = position.x - self.position.x
-        dy = position.y - self.position.y
+        dx = new_position.x - old_position.x
+        dy = new_position.y - old_position.y
         
         if dx > 0:
             self.facing = "east"
@@ -220,8 +225,6 @@ class MovementComponent(Component):
         elif dy < 0:
             self.facing = "north"
         # If dx == 0 and dy == 0, keep current facing
-        
-        self.position = position
     
     def face_direction(self, direction: str) -> None:
         """Set the facing direction explicitly.
@@ -413,3 +416,532 @@ class StatusComponent(Component):
             Speed value for determining turn order (higher = earlier)
         """
         return self.speed
+
+
+class InterruptComponent(Component):
+    """Component for interrupt and prepared action management.
+    
+    This component tracks prepared actions that can be triggered by specific
+    conditions during combat. It enables tactical depth through reactive
+    abilities like overwatch, shield wall, and ambush attacks.
+    """
+    
+    def __init__(self, entity: "Entity"):
+        """Initialize interrupt component.
+        
+        Args:
+            entity: The entity this component belongs to
+        """
+        super().__init__(entity)
+        self.prepared_actions: list["PreparedAction"] = []
+        self.max_prepared_actions = 1  # Limit to prevent complexity overload
+        
+    def get_component_name(self) -> str:
+        """Get the name identifier for this component type."""
+        return "Interrupt"
+    
+    def can_prepare_action(self) -> bool:
+        """Check if the unit can prepare another action.
+        
+        Returns:
+            True if unit has available interrupt slots
+        """
+        return len(self.prepared_actions) < self.max_prepared_actions
+    
+    def add_prepared_action(self, prepared: "PreparedAction") -> bool:
+        """Add a prepared action to this unit.
+        
+        Args:
+            prepared: The prepared action to add
+            
+        Returns:
+            True if action was added successfully
+        """
+        if not self.can_prepare_action():
+            return False
+            
+        self.prepared_actions.append(prepared)
+        return True
+    
+    def remove_prepared_action(self, prepared: "PreparedAction") -> bool:
+        """Remove a specific prepared action.
+        
+        Args:
+            prepared: The prepared action to remove
+            
+        Returns:
+            True if action was found and removed
+        """
+        try:
+            self.prepared_actions.remove(prepared)
+            return True
+        except ValueError:
+            return False
+    
+    def clear_prepared_actions(self) -> int:
+        """Clear all prepared actions.
+        
+        Returns:
+            Number of actions that were cleared
+        """
+        count = len(self.prepared_actions)
+        self.prepared_actions.clear()
+        return count
+    
+    def get_prepared_actions(self) -> list["PreparedAction"]:
+        """Get all current prepared actions.
+        
+        Returns:
+            List of prepared actions (copy to prevent modification)
+        """
+        return self.prepared_actions.copy()
+    
+    def has_prepared_action_type(self, action_name: str) -> bool:
+        """Check if unit has a specific type of prepared action.
+        
+        Args:
+            action_name: Name of the action type to check for
+            
+        Returns:
+            True if unit has this type of prepared action
+        """
+        return any(prep.action.name == action_name for prep in self.prepared_actions)
+    
+    def get_interrupt_stance_description(self) -> str:
+        """Get a description of the unit's current interrupt stance.
+        
+        Returns:
+            Human-readable description of prepared actions
+        """
+        if not self.prepared_actions:
+            return "Ready"
+            
+        if len(self.prepared_actions) == 1:
+            prep = self.prepared_actions[0]
+            return f"{prep.action.name} ({prep.trigger.trigger_type.name})"
+            
+        return f"Multiple Interrupts ({len(self.prepared_actions)})"
+
+
+class MoraleComponent(Component):
+    """Component for morale and panic management.
+    
+    This component tracks a unit's psychological state, including courage,
+    fear, and panic responses. It enables grimdark battlefield psychology
+    where units can break under pressure and flee from hopeless situations.
+    """
+    
+    def __init__(self, entity: "Entity", base_morale: int = 100, 
+                 panic_threshold: int = 30, rout_threshold: int = 10):
+        """Initialize morale component.
+        
+        Args:
+            entity: The entity this component belongs to
+            base_morale: Base morale value (default 100)
+            panic_threshold: Morale level that triggers panic (default 30)
+            rout_threshold: Morale level that triggers routing/fleeing (default 10)
+        """
+        super().__init__(entity)
+        self.base_morale = base_morale
+        self.current_morale = base_morale
+        self.panic_threshold = panic_threshold
+        self.rout_threshold = rout_threshold
+        
+        # State tracking
+        self.is_panicked = False
+        self.is_routed = False
+        self.panic_duration = 0  # Turns spent in panic
+        self.last_rally_attempt = -1  # Turn of last rally attempt
+        
+        # Morale modifiers
+        self.temporary_modifiers = {}  # str -> int (modifier_name -> value)
+        
+    def get_component_name(self) -> str:
+        """Get the name identifier for this component type."""
+        return "Morale"
+    
+    def get_effective_morale(self) -> int:
+        """Get current morale including all modifiers.
+        
+        Returns:
+            Effective morale value (clamped to 0-150 range)
+        """
+        effective = self.current_morale + sum(self.temporary_modifiers.values())
+        return max(0, min(150, effective))
+    
+    def get_morale_state(self) -> str:
+        """Get the unit's current morale state description.
+        
+        Returns:
+            Human-readable morale state
+        """
+        if self.is_routed:
+            return "Routed"
+        elif self.is_panicked:
+            return "Panicked"
+        
+        morale = self.get_effective_morale()
+        if morale >= 90:
+            return "Heroic"
+        elif morale >= 70:
+            return "Confident" 
+        elif morale >= 50:
+            return "Steady"
+        elif morale >= 35:
+            return "Shaken"
+        elif morale >= 20:
+            return "Afraid"
+        else:
+            return "Terrified"
+    
+    def modify_morale(self, amount: int, reason: str = "") -> int:
+        """Modify current morale by the given amount.
+        
+        Args:
+            amount: Amount to change morale by (positive or negative)
+            reason: Optional reason for the morale change
+            
+        Returns:
+            Actual morale change applied
+        """
+        old_morale = self.current_morale
+        self.current_morale = max(0, min(150, self.current_morale + amount))
+        actual_change = self.current_morale - old_morale
+        
+        # Check for state changes
+        effective = self.get_effective_morale()
+        
+        # Check for panic entry
+        if not self.is_panicked and effective <= self.panic_threshold:
+            self.enter_panic_state(reason)
+        
+        # Check for rout entry
+        if not self.is_routed and effective <= self.rout_threshold:
+            self.enter_rout_state()
+        
+        # Check for recovery from panic (need higher threshold due to panic penalty)
+        if self.is_panicked and not self.is_routed and effective >= self.panic_threshold + 15:
+            self.exit_panic_state()
+            
+        return actual_change
+    
+    def add_temporary_modifier(self, name: str, value: int) -> None:
+        """Add a temporary morale modifier.
+        
+        Args:
+            name: Name of the modifier (e.g., "nearby_ally", "leader_present")
+            value: Modifier value (positive or negative)
+        """
+        self.temporary_modifiers[name] = value
+    
+    def remove_temporary_modifier(self, name: str) -> bool:
+        """Remove a temporary morale modifier.
+        
+        Args:
+            name: Name of the modifier to remove
+            
+        Returns:
+            True if modifier was found and removed
+        """
+        return self.temporary_modifiers.pop(name, None) is not None
+    
+    def clear_temporary_modifiers(self) -> None:
+        """Clear all temporary morale modifiers."""
+        self.temporary_modifiers.clear()
+    
+    def enter_panic_state(self, reason: str = "morale_collapse") -> None:
+        """Enter panic state due to low morale.
+        
+        Args:
+            reason: Reason for entering panic state
+        """
+        if not self.is_panicked:
+            self.is_panicked = True
+            self.panic_duration = 0
+            # Panic causes immediate morale penalties
+            self.add_temporary_modifier("panic_penalty", -10)
+    
+    def enter_rout_state(self) -> None:
+        """Enter rout state - unit will attempt to flee battlefield."""
+        if not self.is_routed:
+            self.is_routed = True
+            self.is_panicked = True  # Routed units are always panicked
+            self.add_temporary_modifier("rout_penalty", -20)
+    
+    def exit_panic_state(self) -> None:
+        """Exit panic state due to morale recovery."""
+        if self.is_panicked and not self.is_routed:
+            self.is_panicked = False
+            self.panic_duration = 0
+            self.remove_temporary_modifier("panic_penalty")
+    
+    def attempt_rally(self, turn: int, rally_bonus: int = 15) -> bool:
+        """Attempt to rally unit out of panic state.
+        
+        Args:
+            turn: Current turn number
+            rally_bonus: Morale bonus if rally succeeds
+            
+        Returns:
+            True if rally was successful
+        """
+        # Prevent spam rallying
+        if turn - self.last_rally_attempt < 2:
+            return False
+        
+        self.last_rally_attempt = turn
+        
+        # Rally chance based on current effective morale
+        # Rally chance: 10-80% based on effective morale
+        
+        # Apply rally bonus first, then check if it's enough to recover
+        self.modify_morale(rally_bonus, "rally_success")
+        
+        # Rally succeeds if the bonus brought morale above panic threshold
+        rally_success = self.get_effective_morale() > self.panic_threshold + 5
+        
+        if rally_success and not self.is_routed:
+            # The modify_morale call above should have already triggered exit_panic_state
+            # if morale is high enough, but call it explicitly for certainty
+            if self.is_panicked:
+                self.exit_panic_state()
+            return True
+        
+        return False
+    
+    def process_turn_effects(self) -> None:
+        """Process ongoing morale effects at the start/end of turn."""
+        if self.is_panicked:
+            self.panic_duration += 1
+            
+            # Panic naturally wears off over time (slowly)
+            if self.panic_duration > 3:
+                recovery_amount = max(1, self.panic_duration // 2)
+                self.modify_morale(recovery_amount, "panic_recovery")
+    
+    def get_combat_penalties(self) -> dict[str, int]:
+        """Get combat penalties due to morale state.
+        
+        Returns:
+            Dictionary of penalty types and values
+        """
+        penalties = {}
+        
+        if self.is_routed:
+            penalties['attack'] = -3
+            penalties['defense'] = -2
+            penalties['movement'] = 1  # Actually a bonus - they move faster when fleeing
+        elif self.is_panicked:
+            penalties['attack'] = -2
+            penalties['accuracy'] = -15  # Percentage penalty
+        
+        effective = self.get_effective_morale()
+        if effective < 40:
+            penalties['defense'] = penalties.get('defense', 0) - 1
+        
+        return penalties
+    
+    def should_flee_from_combat(self) -> bool:
+        """Check if unit should avoid combat due to low morale.
+        
+        Returns:
+            True if unit should avoid engaging in combat
+        """
+        return self.is_routed or (self.is_panicked and self.get_effective_morale() < 25)
+
+
+class WoundComponent(Component):
+    """Component for wound and injury management.
+    
+    This component tracks persistent injuries that affect unit performance
+    and persist across battles. Wounds can heal over time or become permanent
+    scars that never fully recover.
+    """
+    
+    def __init__(self, entity: "Entity"):
+        """Initialize wound component.
+        
+        Args:
+            entity: The entity this component belongs to
+        """
+        from ..core.wounds import Wound
+        super().__init__(entity)
+        self.active_wounds: list[Wound] = []
+        self.permanent_scars: list[Wound] = []
+    
+    def get_component_name(self) -> str:
+        """Get the name identifier for this component type."""
+        return "Wound"
+    
+    def add_wound(self, wound: "Wound") -> None:
+        """Add a new wound to the unit.
+        
+        Args:
+            wound: The wound to add
+        """
+        self.active_wounds.append(wound)
+    
+    def remove_wound(self, wound: "Wound") -> bool:
+        """Remove a wound (when it heals).
+        
+        Args:
+            wound: The wound to remove
+            
+        Returns:
+            True if wound was found and removed
+        """
+        if wound in self.active_wounds:
+            self.active_wounds.remove(wound)
+            return True
+        return False
+    
+    def get_total_wound_effects(self) -> "WoundEffect":
+        """Calculate combined effects of all wounds and scars.
+        
+        Returns:
+            Combined wound effect
+        """
+        from ..core.wounds import WoundEffect
+        
+        if not self.active_wounds and not self.permanent_scars:
+            return WoundEffect()
+        
+        total_effect = WoundEffect()
+        for wound in self.active_wounds + self.permanent_scars:
+            total_effect = total_effect.combine_with(wound.get_current_effect())
+        
+        return total_effect
+    
+    def get_wound_penalties(self) -> dict[str, int]:
+        """Get combat penalties from wounds.
+        
+        Returns:
+            Dictionary of stat penalties
+        """
+        effects = self.get_total_wound_effects()
+        return {
+            'attack': effects.attack_modifier,
+            'defense': effects.defense_modifier,
+            'speed': effects.speed_modifier,
+            'accuracy': effects.accuracy_modifier,
+            'evasion': effects.evasion_modifier,
+        }
+    
+    def has_wounds(self) -> bool:
+        """Check if unit has any active wounds.
+        
+        Returns:
+            True if unit has wounds
+        """
+        return len(self.active_wounds) > 0
+    
+    def get_wound_count(self) -> int:
+        """Get total number of active wounds.
+        
+        Returns:
+            Number of active wounds
+        """
+        return len(self.active_wounds)
+    
+    def process_wound_turn(self, turn: int) -> list[str]:
+        """Process wound healing and effects for a turn.
+        
+        Args:
+            turn: Current turn number
+            
+        Returns:
+            List of messages about wound changes
+        """
+        messages = []
+        wounds_to_remove = []
+        wounds_to_scar = []
+        
+        for wound in self.active_wounds:
+            # TODO: Integrate wound tick system properly with component architecture
+            # wound.tick requires Unit but component only has Entity - needs design review
+            
+            # Check if wound has healed
+            if wound.is_healed():
+                wounds_to_remove.append(wound)
+                messages.append(f"{wound.properties.body_part.name.title()} {wound.properties.wound_type.name.lower()} wound has healed")
+            
+            # Check if wound becomes permanent scar
+            elif wound.is_scarred:
+                wounds_to_scar.append(wound)
+                messages.append(f"{wound.properties.body_part.name.title()} {wound.properties.wound_type.name.lower()} wound has become a permanent scar")
+        
+        # Remove healed wounds
+        for wound in wounds_to_remove:
+            self.remove_wound(wound)
+        
+        # Move scarred wounds to permanent list
+        for wound in wounds_to_scar:
+            self.remove_wound(wound)
+            wound.make_permanent()
+            self.permanent_scars.append(wound)
+        
+        return messages
+
+
+class AIComponent(Component):
+    """Component for AI decision-making and behavior.
+    
+    This component manages AI behavior for units, using the Strategy pattern
+    to allow different types of AI behaviors to be plugged in dynamically.
+    """
+    
+    def __init__(self, entity: "Entity", ai_behavior: "AIBehavior"):
+        """Initialize AI component.
+        
+        Args:
+            entity: The entity this component belongs to
+            ai_behavior: The AI behavior strategy to use
+        """
+        super().__init__(entity)
+        from .ai_behaviors import AIBehavior
+        self.behavior: AIBehavior = ai_behavior
+        self.memory: dict = {}  # For learning and adaptation in future
+    
+    def get_component_name(self) -> str:
+        """Get the name identifier for this component type."""
+        return "AI"
+    
+    def make_decision(self, game_map: "GameMap", timeline: "Timeline") -> "AIDecision":
+        """Make a decision for the current turn.
+        
+        Args:
+            game_map: The current game map
+            timeline: The timeline system for turn order awareness
+            
+        Returns:
+            AIDecision with action and target information
+        """
+        # Get the unit from our entity (assumes Unit wraps Entity)
+        # This is a bit of a hack but maintains backward compatibility
+        unit = None
+        for map_unit in game_map.units:
+            if map_unit.unit_id == self.entity.entity_id:
+                unit = map_unit
+                break
+        
+        if unit is None:
+            from .ai_behaviors import AIDecision
+            return AIDecision(
+                action_name="Wait",
+                confidence=0.0,
+                reasoning="Unit not found on game map"
+            )
+        
+        return self.behavior.choose_action(unit, game_map, timeline)
+    
+    def set_behavior(self, new_behavior: "AIBehavior") -> None:
+        """Change the AI behavior strategy.
+        
+        Args:
+            new_behavior: The new AI behavior to use
+        """
+        self.behavior = new_behavior
+    
+    def get_behavior_name(self) -> str:
+        """Get the name of the current AI behavior."""
+        return self.behavior.get_behavior_name()

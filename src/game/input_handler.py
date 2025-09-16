@@ -1,507 +1,819 @@
 """
-Input handling system for processing user interactions.
+Streamlined input handling system using modular architecture.
 
-This module manages all user input events and translates them into
-appropriate game actions, maintaining separation from game logic execution.
+This module coordinates input processing through specialized components:
+- KeyConfigLoader: Loads customizable key mappings from configuration
+- InputContextManager: Manages input contexts and state
+- ActionRegistry: Maps actions to commands and handles execution
+- Command pattern: Encapsulates input actions as objects
+
+The result is a clean, maintainable, and easily extensible input system.
 """
-from typing import TYPE_CHECKING, Callable, Optional
+
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
-    from .map import GameMap
-    from .unit import Unit
+    from ..core.event_manager import EventManager
     from ..core.game_state import GameState
     from ..core.renderer import Renderer
+    from .map import GameMap
+    from .unit import Unit
 
+from ..core.actions import ActionResult
+from ..core.data_structures import Vector2, VectorArray
+from ..core.event_manager import EventPriority
+from ..core.events import (
+    ActionCanceled,
+    ActionSelected,
+    LogMessage,
+    LogSaveRequested,
+    ManagerInitialized,
+    MovementCanceled,
+    UnitMoved,
+)
 from ..core.game_enums import Team
 from ..core.game_state import BattlePhase
-from ..core.input import InputEvent, InputType, Key
-from ..core.data_structures import Vector2, VectorArray
+from ..core.input import InputEvent, InputType
+
+# Import our new modular components
+from ..core.input_system import (
+    ActionRegistry,
+    InputContext,
+    InputContextManager,
+    KeyConfigLoader,
+)
 
 
 class InputHandler:
-    """Handles all user input events and translates them to game actions."""
-    
+    """Streamlined input handler using modular architecture."""
+
     def __init__(
         self,
-        game_map: "GameMap",
-        game_state: "GameState", 
+        game_map: Optional["GameMap"],
+        game_state: "GameState",
         renderer: "Renderer",
+        event_manager: "EventManager",
         combat_manager=None,
         ui_manager=None,
-        scenario_menu=None
+        scenario_menu=None,
+        timeline_manager=None,
     ):
+        # Core dependencies
         self.game_map = game_map
         self.state = game_state
         self.renderer = renderer
+        self.event_manager = event_manager
         self.combat_manager = combat_manager
         self.ui_manager = ui_manager
         self.scenario_menu = scenario_menu
-        
+        self.timeline_manager = timeline_manager
+
+        # Initialize modular components
+        self.context_manager = InputContextManager(game_state)
+        self.action_registry = ActionRegistry()
+        self.key_config = KeyConfigLoader()
+
+        # Load key configuration
+        self.key_config.load_config()
+
         # Callbacks that will be set by the main Game class
         self.on_quit: Optional[Callable] = None
         self.on_end_unit_turn: Optional[Callable] = None
         self.on_end_team_turn: Optional[Callable] = None
         self.on_load_selected_scenario: Optional[Callable] = None
         self.on_movement_preview_update: Optional[Callable] = None
-        
+
+        # Emit initialization event
+        self.event_manager.publish(
+            ManagerInitialized(turn=0, manager_name="InputHandler"),
+            source="InputHandler",
+        )
+
+    def _emit_log(
+        self, message: str, category: str = "INPUT", level: str = "INFO"
+    ) -> None:
+        """Emit a log message event."""
+        current_turn = getattr(self.state, "turn", 0)
+        if hasattr(self.state, "battle") and hasattr(self.state.battle, "current_turn"):
+            current_turn = self.state.battle.current_turn
+
+        self.event_manager.publish(
+            LogMessage(
+                turn=current_turn,
+                message=message,
+                category=category,
+                level=level,
+                source="InputHandler",
+            ),
+            source="InputHandler",
+        )
+
     def handle_input_events(self, events: list[InputEvent]) -> None:
         """Process a list of input events."""
         for event in events:
             if event.event_type == InputType.QUIT:
-                if self.on_quit:
-                    self.on_quit()
+                # Show quit confirmation dialog instead of immediately quitting
+                if not self.state.ui.is_dialog_open():
+                    self.state.ui.open_dialog("confirm_quit")
             elif event.event_type == InputType.KEY_PRESS:
                 self.handle_key_press(event)
-    
-    def handle_key_press(self, event: InputEvent) -> None:
-        """Route key press events to appropriate handlers based on current state."""
-        # Handle modal overlays (objectives, help, minimap)
-        if self.state.ui.is_overlay_open():
-            self.handle_overlay_input(event)
-        # Handle confirmation dialogs
-        elif self.state.ui.is_dialog_open():
-            self.handle_dialog_input(event)
-        # Handle battle forecast during targeting
-        elif self.state.ui.is_forecast_active():
-            self.handle_forecast_input(event)
-        # Handle existing modals
-        elif self.state.ui.is_action_menu_open():
-            self.handle_action_menu_input(event)
-        elif self.state.ui.is_menu_open():
-            self.handle_menu_input(event)
-        else:
-            self.handle_map_input(event)
-    
-    def handle_map_input(self, event: InputEvent) -> None:
-        """Handle input when navigating the main game map."""
-        if event.key == Key.Q:
-            if self.on_quit:
-                self.on_quit()
-            return
-        
-        # During non-player turns, only allow limited actions
-        if self.state.battle.current_team != 0:  # 0 = Player team
-            # Only allow overlay keys during enemy/AI turns
-            if event.key == Key.O:
-                self.handle_objectives_key()
-            elif event.key == Key.HELP:
-                self.handle_help_key()
-            elif event.key == Key.M:
-                self.handle_minimap_key()
-            # Ignore all other input during enemy turns
-            return
-        
-        # Handle TAB key for cycling
-        if event.key == Key.TAB:
-            self.handle_tab_cycling()
-            return
-        
-        if event.is_movement_key():
-            self.handle_movement_input(event)
-        elif event.is_confirm_key():
-            self.handle_confirm()
-        elif event.is_cancel_key():
-            self.handle_cancel()
-        # Strategic action keys
-        elif event.key == Key.O:
-            self.handle_objectives_key()
-        elif event.key == Key.HELP:
-            self.handle_help_key()
-        elif event.key == Key.M:
-            self.handle_minimap_key()
-        elif event.key == Key.E:
-            self.handle_end_turn_key()
-        elif event.key == Key.A:
-            self.handle_attack_key()
-        elif event.key == Key.W:
-            self.handle_wait_key()
-    
-    def handle_movement_input(self, event: InputEvent) -> None:
-        """Handle directional movement input."""
-        dx, dy = 0, 0
-        if event.key == Key.UP:
-            dy = -1
-        elif event.key in {Key.DOWN, Key.S}:
-            dy = 1
-        elif event.key == Key.LEFT:
-            dx = -1
-        elif event.key in {Key.RIGHT, Key.D}:
-            dx = 1
-        
-        self.state.cursor.move(dx, dy, self.game_map.width, self.game_map.height)
-        
-        # Update selected target and AOE tiles if in attack targeting mode
-        if (
-            self.state.battle.phase == BattlePhase.UNIT_ACTING
-            and self.state.battle.attack_range
-            and self.combat_manager
-        ):
-            self.combat_manager.update_attack_targeting()
-        elif self.state.battle.selected_unit_id and self.on_movement_preview_update:
-            self.on_movement_preview_update()
-    
-    def handle_confirm(self) -> None:
-        """Handle confirmation input based on current battle phase."""
-        cursor_position = self.state.cursor.position
 
-        if self.state.battle.phase == BattlePhase.UNIT_SELECTION:
-            self._handle_unit_selection_confirm(cursor_position)
-        elif self.state.battle.phase == BattlePhase.UNIT_MOVING:
-            self._handle_unit_movement_confirm(cursor_position)
-        elif self.state.battle.phase == BattlePhase.ACTION_MENU:
-            self._handle_action_menu_confirm()
-        elif self.state.battle.phase == BattlePhase.UNIT_ACTING:
-            self._handle_unit_acting_confirm()
-    
-    def _handle_unit_selection_confirm(self, cursor_position: Vector2) -> None:
+    def handle_key_press(self, event: InputEvent) -> None:
+        """Route key press events using the modular system."""
+        # Get current context
+        context = self.context_manager.get_current_context()
+
+        # Get key mappings for this context
+        key_mappings = self.key_config.get_key_mappings(context)
+
+        # Look up action for this key (event.key is already a Key enum)
+        action_name = key_mappings.get(event.key) if event.key else None
+
+        if action_name:
+            # Execute action through the registry
+            self.action_registry.execute_action(action_name, self, context)
+
+        # Handle special contexts that should close on unmapped keys
+        if context in [InputContext.OVERLAY, InputContext.FORECAST]:
+            # For overlays/forecast, any unmapped key closes them
+            self.action_registry.execute_action("close_overlay", self, context)
+        elif context == InputContext.EXPANDED_LOG:
+            # For expanded log, only mapped keys should work - ignore unmapped keys
+            pass
+        else:
+            # For other contexts, check if we should fall back to old system
+            if self._should_use_fallback_for_context(context):
+                self._handle_legacy_input(event, context)
+
+    def _should_use_fallback_for_context(self, context: InputContext) -> bool:
+        """Check if we should use legacy fallback for a context."""
+        # Only use fallback for main menu input (not yet converted)
+        return context == InputContext.MENU
+
+    def _handle_legacy_input(self, event: InputEvent, context: InputContext) -> None:
+        """Handle legacy input for contexts not yet fully converted."""
+        if context == InputContext.MENU:
+            self.handle_main_menu_input(event)
+
+    def handle_main_menu_input(self, event: InputEvent) -> None:
+        """Handle input while in main menu phase (legacy method)."""
+        if self.scenario_menu:
+            action = self.scenario_menu.handle_input(event)
+
+            if action == "load" and self.on_load_selected_scenario:
+                self.on_load_selected_scenario()
+            elif action == "quit" and self.on_quit:
+                self.on_quit()
+
+    # ==================== ACTION METHODS FOR ACTION REGISTRY ====================
+    # These methods are called by the ActionRegistry through ActionCommand
+
+    def action_cycle_units(self) -> None:
+        """Handle TAB key cycling for different phases."""
+        if self.state.battle.phase == BattlePhase.UNIT_ACTION_SELECTION:
+            self._cycle_timeline_front_units()
+        elif self.state.battle.phase == BattlePhase.ACTION_EXECUTION and self.combat_manager:
+            self.combat_manager.cycle_targetable_enemies()
+
+    def action_end_turn(self) -> None:
+        """Handle E key press to end turn (with confirmation)."""
+        self.state.ui.open_dialog("confirm_end_turn")
+
+    def action_close_log(self) -> None:
+        """Close the expanded log."""
+        if self.ui_manager:
+            self.ui_manager.close_overlay()
+        
+        # If in GAME_OVER phase, re-show the game over dialog
+        from ..core.game_state import GamePhase
+        if self.state.phase == GamePhase.GAME_OVER:
+            game_result = self.state.state_data.get("game_result", "unknown")
+            game_over_message = self.state.state_data.get("game_over_message", "Game Over")
+            if self.ui_manager:
+                self.ui_manager.show_game_over_dialog(game_result, game_over_message)
+
+    def action_toggle_debug(self) -> None:
+        """Toggle debug message visibility in log."""
+        self._emit_log("=== DEBUG TOGGLE PRESSED ===", category="SYSTEM")
+        # TODO: Emit toggle debug event - debug visibility should be handled by log manager
+        # For now, just emit feedback messages
+
+    def action_save_log(self) -> None:
+        """Prompt to save log to file."""
+        if self.state and self.ui_manager:
+            # Open save confirmation dialog
+            self.state.ui.open_dialog("confirm_save_log")
+            self._emit_log("Save log dialog opened", category="SYSTEM")
+
+    def action_scroll_up(self) -> None:
+        """Scroll up in expanded log to see older messages."""
+        if self.state:
+            self.state.ui.scroll_expanded_log(5)  # Scroll up 5 lines
+
+    def action_scroll_down(self) -> None:
+        """Scroll down in expanded log to see newer messages."""
+        if self.state:
+            self.state.ui.scroll_expanded_log(-5)  # Scroll down 5 lines
+
+    def action_dialog_move_left(self) -> None:
+        """Move dialog selection left."""
+        self.state.ui.move_dialog_selection(-1)
+
+    def action_dialog_move_right(self) -> None:
+        """Move dialog selection right."""
+        self.state.ui.move_dialog_selection(1)
+
+    def action_dialog_confirm(self) -> None:
+        """Confirm dialog selection."""
+        self._handle_dialog_confirmation()
+
+    def action_dialog_cancel(self) -> None:
+        """Cancel dialog."""
+        self.state.ui.close_dialog()
+
+    def action_menu_move_up(self) -> None:
+        """Move menu selection up."""
+        self.state.ui.move_action_menu_selection(-1)
+
+    def action_menu_move_down(self) -> None:
+        """Move menu selection down."""
+        self.state.ui.move_action_menu_selection(1)
+
+    def action_menu_select(self) -> None:
+        """Select menu item."""
+        if (
+            self.state.ui.action_menu_items
+            and 0
+            <= self.state.ui.action_menu_selection
+            < len(self.state.ui.action_menu_items)
+        ):
+            action = self.state.ui.action_menu_items[
+                self.state.ui.action_menu_selection
+            ]
+            self._handle_action_selection(action)
+
+    def action_menu_cancel(self) -> None:
+        """Handle cancel with hierarchical logic based on current phase and unit state."""
+        current_phase = self.state.battle.phase
+        unit_id = self.state.battle.selected_unit_id
+
+        # These should never be None when cancel is called - if they are, it's a bug
+        assert unit_id is not None, "Cancel called but no unit is selected"
+        unit = self.game_map.get_unit(unit_id)
+        assert unit is not None, f"Cancel called but unit {unit_id} not found in map"
+
+        # Scenario 1: Cancel during action targeting - return to action selection
+        if current_phase == BattlePhase.ACTION_TARGETING:
+            self.state.battle.clear_pending_action()
+            # Clear attack state when canceling targeting
+            if self.combat_manager:
+                self.combat_manager.clear_attack_state()
+            # Restore movement range when returning to action selection
+            if self.state.battle.original_movement_range:
+                self.state.battle.set_movement_range(self.state.battle.original_movement_range)
+                self._emit_log(f"Restored movement range for {unit.name}", "CANCEL")
+            # Reopen the action menu for the unit
+            self._build_action_menu_for_unit(unit)
+            self.event_manager.publish(
+                ActionCanceled(
+                    turn=self.state.battle.current_turn,
+                    unit_name=unit.name,
+                    unit_id=unit.unit_id,
+                    canceled_action="targeting",
+                    return_to_phase="UNIT_ACTION_SELECTION",
+                ),
+                priority=EventPriority.HIGH,
+                source="InputHandler",
+            )
+
+        # Scenario 2: Cancel during action selection - return to movement
+        elif current_phase == BattlePhase.UNIT_ACTION_SELECTION:
+            self.state.ui.close_action_menu()
+            # Get the original position from when the unit's turn started
+            original_pos = self.state.battle.original_unit_position
+            if original_pos:
+                original_position = (original_pos.y, original_pos.x)
+            else:
+                # Fallback to current position if no original stored
+                original_position = (unit.position.y, unit.position.x)
+            
+            self.event_manager.publish(
+                MovementCanceled(
+                    turn=self.state.battle.current_turn,
+                    unit_name=unit.name,
+                    unit_id=unit.unit_id,
+                    original_position=original_position,
+                ),
+                priority=EventPriority.HIGH,
+                source="InputHandler",
+            )
+
+        # Scenario 3: Cancel during movement - return unit to original position
+        elif current_phase == BattlePhase.UNIT_MOVING:
+            assert (
+                hasattr(self.state.battle, "original_unit_position")
+                and self.state.battle.original_unit_position
+            ), "Cancel called during movement but no original position stored"
+
+            # Move unit back to original position
+            original_pos = self.state.battle.original_unit_position
+            unit.position = original_pos
+
+            # Clear movement state
+            self.state.battle.movement_range = VectorArray()
+            self.state.battle.selected_unit_id = None
+            self.state.battle.original_unit_position = None
+
+            self._emit_log(f"{unit.name} returned to original position", "CANCEL")
+            # Movement cancel stays in same phase - no event needed for phase transition
+
+        else:
+            # This should never happen - cancel called in unexpected phase
+            assert False, f"Cancel called in unexpected phase: {current_phase}"
+
+    # ==================== HELPER METHODS (PRESERVED FROM ORIGINAL) ====================
+
+    def _cycle_timeline_front_units(self) -> None:
+        """Cycle through units that are at the front of the timeline."""
+        if not hasattr(self.state.battle, "timeline") or not self.state.battle.timeline:
+            return
+
+        timeline = self.state.battle.timeline
+        current_time = timeline.current_time
+
+        # Get all units that can act right now
+        actionable_units = []
+        for entry in timeline.get_preview(5):
+            if entry.execution_time <= current_time and entry.entity_type == "unit":
+                unit = self.game_map.get_unit(entry.entity_id)
+                if unit.team == Team.PLAYER:
+                    actionable_units.append(unit)
+
+        if not actionable_units:
+            return
+
+        # Cycle between actionable units
+        current_selected = self.state.battle.selected_unit_id
+        current_index = -1
+
+        for i, unit in enumerate(actionable_units):
+            if unit.unit_id == current_selected:
+                current_index = i
+                break
+
+        next_index = (current_index + 1) % len(actionable_units)
+        next_unit = actionable_units[next_index]
+
+        self.state.battle.selected_unit_id = next_unit.unit_id
+        self.state.cursor.set_position(next_unit.position)
+
+        self._emit_log(f"TAB: Selected {next_unit.name} (can act now)", category="UI")
+
+    def _handle_dialog_confirmation(self) -> None:
+        """Handle dialog confirmation based on dialog type."""
+        dialog_type = self.state.ui.active_dialog
+        selection = self.state.ui.get_dialog_selection()
+        
+        # Handle confirm_end_turn
+        if dialog_type == "confirm_end_turn":
+            if selection == 0 and self.on_end_team_turn:  # Yes
+                self.on_end_team_turn()
+            self.state.ui.close_dialog()
+            return
+        
+        # Handle confirm_friendly_fire
+        if dialog_type == "confirm_friendly_fire":
+            if selection == 0 and self.combat_manager:  # Yes - proceed with attack
+                success = self.combat_manager.execute_confirmed_attack()
+                if success and self.on_end_unit_turn:
+                    self.on_end_unit_turn()
+            self.state.ui.close_dialog()
+            return
+        
+        # Handle confirm_save_log
+        if dialog_type == "confirm_save_log":
+            if selection == 0:  # Yes - save log
+                # Emit save log event - log manager will handle file saving
+                current_turn = getattr(self.state, "turn", 0)
+                if hasattr(self.state, "battle") and hasattr(
+                    self.state.battle, "current_turn"
+                ):
+                    current_turn = self.state.battle.current_turn
+                
+                self.event_manager.publish(
+                    LogSaveRequested(turn=current_turn),
+                    source="InputHandler",
+                )
+                self._emit_log("Log save requested", category="SYSTEM")
+            self.state.ui.close_dialog()
+            return
+        
+        # Handle confirm_quit
+        if dialog_type == "confirm_quit":
+            if selection == 0 and self.on_quit:  # Yes - quit
+                self.on_quit()
+            self.state.ui.close_dialog()
+            return
+        
+        # Handle game_over
+        if dialog_type == "game_over":
+            if selection == 0:  # View Log
+                self.state.ui.close_dialog()
+                if self.ui_manager:
+                    self.ui_manager.show_expanded_log()
+            elif selection == 1 and self.on_quit:  # Quit Game
+                self.on_quit()
+            else:
+                self.state.ui.close_dialog()
+            return
+        
+        # Default case - close any other dialog
+        self.state.ui.close_dialog()
+
+    def _handle_action_selection(self, action: str) -> None:
+        """Handle the selected action from the action menu."""
+        # Close action menu first
+        self.state.ui.close_action_menu()
+
+        if action == "Wait":
+            # Simple wait action - timeline manager is always present
+
+            result = self.timeline_manager.execute_unit_action("Wait")
+
+            if result == ActionResult.SUCCESS:
+                self._emit_log(
+                    "Unit waits and will act again later", category="TIMELINE"
+                )
+            else:
+                self._emit_log(f"Wait action failed: {result}", level="WARNING")
+
+        elif action == "Attack" or "Attack" in action:
+            # Attack needs targeting - first set up the pending action through timeline manager
+            if self.state.battle.selected_unit_id and self.combat_manager:
+                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
+                if unit:
+                    # Set up pending action through timeline manager
+                    result = self.timeline_manager.execute_unit_action(action)
+                    if result == ActionResult.REQUIRES_TARGET:
+                        self._emit_log(
+                            f"{unit.name} preparing to attack. Select target with arrow keys, Enter to confirm.",
+                            category="UI",
+                        )
+                        # Emit action selected event - PhaseManager will transition to ACTION_TARGETING
+                        self.event_manager.publish(
+                            ActionSelected(
+                                turn=self.state.battle.current_turn,
+                                unit_name=unit.name,
+                                unit_id=unit.unit_id,
+                                action_name=action,
+                                action_type="Attack",
+                            ),
+                            priority=EventPriority.HIGH,
+                            source="InputHandler",
+                        )
+                        self.combat_manager.setup_attack_targeting(unit)
+                    else:
+                        self._emit_log(
+                            f"Attack action setup failed: {result}", level="WARNING"
+                        )
+
+        else:
+            # Generic action
+            result = self.timeline_manager.execute_unit_action(action)
+            if result == ActionResult.SUCCESS:
+                self._emit_log(
+                    f"Action {action} executed successfully", "INPUT", "INFO"
+                )
+            elif result == ActionResult.REQUIRES_TARGET:
+                # Emit action selected event - PhaseManager will transition to ACTION_TARGETING
+                if self.state.battle.selected_unit_id:
+                    unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
+                    if unit:
+                        self.event_manager.publish(
+                            ActionSelected(
+                                turn=self.state.battle.current_turn,
+                                unit_name=unit.name,
+                                unit_id=unit.unit_id,
+                                action_name=action,
+                                action_type="Generic",
+                            ),
+                            priority=EventPriority.HIGH,
+                            source="InputHandler",
+                        )
+                self._emit_log(
+                    f"Action {action} needs target selection", "INPUT", "INFO"
+                )
+            else:
+                self._emit_log(f"Action {action} failed: {result}", "INPUT", "WARNING")
+
+    # ==================== PRESERVED METHODS FOR COMPLEX GAME LOGIC ====================
+
+    def _handle_unit_selection_confirm(self, cursor_position: Vector2) -> bool:
         """Handle confirmation during unit selection phase."""
         unit = self.game_map.get_unit_at(cursor_position)
-        if unit and unit.team == Team.PLAYER and unit.can_move and unit.can_act:
-            self.state.battle.selected_unit_id = unit.unit_id
-            # Store original position for potential cancellation
-            self.state.battle.original_unit_position = unit.position
-            self.state.battle.phase = BattlePhase.UNIT_MOVING
-            movement_range = self.game_map.calculate_movement_range(unit)
-            self.state.battle.set_movement_range(movement_range)
-    
-    def _handle_unit_movement_confirm(self, cursor_position: Vector2) -> None:
+        if not unit:
+            return False
+
+        # CRITICAL: Always check team first - only player units can be selected
+        if unit.team != Team.PLAYER:
+            self._emit_log(
+                f"Cannot select {unit.name} - not a player unit (team: {unit.team})",
+                level="INFO",
+            )
+            return False
+
+        # Only allow selecting the current acting unit according to timeline
+        if hasattr(self.state.battle, "current_acting_unit_id"):
+            # Check if this is the unit that should be acting according to timeline
+            if (
+                self.state.battle.current_acting_unit_id
+                and unit.unit_id != self.state.battle.current_acting_unit_id
+            ):
+                self._emit_log(
+                    f"Cannot select {unit.name} - not their turn (current: {self.state.battle.current_acting_unit_id})",
+                    level="INFO",
+                )
+                return False  # Not this unit's turn
+
+        # Unit is valid for selection
+        self.state.battle.selected_unit_id = unit.unit_id
+        self.state.battle.original_unit_position = unit.position
+        # Phase transition to UNIT_MOVING will be handled by TimelineManager via UnitTurnStarted event
+        movement_range = self.game_map.calculate_movement_range(unit)
+        self.state.battle.set_movement_range(movement_range)
+        return True
+
+    def _handle_unit_movement_confirm(self, cursor_position: Vector2) -> bool:
         """Handle confirmation during unit movement phase."""
         if self.state.battle.is_in_movement_range(cursor_position):
             if self.state.battle.selected_unit_id:
                 unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
                 if unit:
-                    if self.game_map.move_unit(unit.unit_id, cursor_position):
-                        # TODO: Emit unit moved event - will be handled by main Game class
-                        pass
-                    unit.has_moved = True
+                    old_position = unit.position
                     
-                    # Clear movement range and transition to action menu
-                    self.state.battle.movement_range = VectorArray()
-                    self.state.battle.phase = BattlePhase.ACTION_MENU
-                    self._build_action_menu_for_unit(unit)
-    
-    def _handle_action_menu_confirm(self) -> None:
+                    # Special case: if user selects current unit tile, go directly to action selection
+                    if cursor_position == unit.position:
+                        # Don't clear movement_range - preserve it during action selection
+                        # Emit unit moved event even though position didn't change (for phase transition)
+                        self.event_manager.publish(
+                            UnitMoved(
+                                turn=self.state.battle.current_turn,
+                                unit_name=unit.name,
+                                unit_id=unit.unit_id,
+                                team=unit.team,
+                                from_position=(old_position.y, old_position.x),
+                                to_position=(cursor_position.y, cursor_position.x),
+                            ),
+                            priority=EventPriority.HIGH,  # High priority for immediate phase transition
+                            source="InputHandler",
+                        )
+                        self._emit_log(
+                            f"{unit.name} stays in place, entering action selection",
+                            category="MOVEMENT",
+                        )
+                        return True
+                    
+                    # Normal movement case
+                    if self.game_map.move_unit(unit.unit_id, cursor_position):
+                        # Don't clear movement_range - preserve it during action selection
+                        # Emit single unit moved event with unit_id for phase transitions
+                        self.event_manager.publish(
+                            UnitMoved(
+                                turn=self.state.battle.current_turn,
+                                unit_name=unit.name,
+                                unit_id=unit.unit_id,
+                                team=unit.team,
+                                from_position=(old_position.y, old_position.x),
+                                to_position=(cursor_position.y, cursor_position.x),
+                            ),
+                            priority=EventPriority.HIGH,  # High priority for immediate phase transition
+                            source="InputHandler",
+                        )
+                        self._emit_log(
+                            f"{unit.name} moved to {cursor_position}",
+                            category="MOVEMENT",
+                        )
+
+                        # MovementCompleted event published above will trigger phase transition
+                        # UIManager will detect UNIT_ACTION_SELECTION phase and show action menu
+                        self._emit_log(
+                            f"{unit.name} movement completed, entering action selection",
+                            category="UI",
+                        )
+                        return True
+        return False
+
+    def _handle_action_menu_confirm(self) -> bool:
         """Handle confirmation in action menu phase."""
         selected_action = self.state.ui.get_selected_action()
         if selected_action:
             self._handle_action_selection(selected_action)
-    
-    def _handle_unit_acting_confirm(self) -> None:
-        """Handle confirmation during unit acting phase (attack execution)."""
+            return True
+        return False
+
+    def _handle_action_targeting_confirm(self, cursor_position: Vector2) -> bool:
+        """Handle confirmation during action targeting phase."""
+        # For attack actions, use the combat manager directly for AOE support
+        if (
+            self.state.battle.pending_action
+            and self.state.battle.pending_action
+            in ["Attack", "Quick Strike", "Power Attack"]
+            and self.combat_manager
+        ):
+            # Use combat manager for attack execution (supports AOE)
+            success = self.combat_manager.execute_attack_at_cursor()
+            if success:
+                self._emit_log(
+                    f"Attack executed at {cursor_position}", category="BATTLE"
+                )
+                return True
+            else:
+                # Check if there's a unit at cursor for more specific error message
+                target_unit = self.game_map.get_unit_at(cursor_position)
+                if not self.state.battle.is_in_attack_range(cursor_position):
+                    self._emit_log("Target position not in attack range", level="WARNING")
+                elif not target_unit and not self.state.battle.aoe_tiles:
+                    self._emit_log("No valid target at cursor position", level="WARNING")
+                else:
+                    self._emit_log("Attack failed", level="WARNING")
+                return False
+
+        # For non-attack actions, use timeline manager
+        result = self.timeline_manager.handle_action_targeting(cursor_position)
+        if result == ActionResult.SUCCESS:
+            self._emit_log(
+                f"Action executed successfully at {cursor_position}", category="UI"
+            )
+            return True
+
+        self._emit_log(f"Action failed: {result}", level="WARNING")
+        return False
+
+    def _handle_unit_acting_confirm(self) -> bool:
+        """Handle confirmation during unit acting phase."""
         if self.combat_manager:
             success = self.combat_manager.execute_attack_at_cursor()
             if success and self.on_end_unit_turn:
                 self.on_end_unit_turn()
-    
-    def handle_cancel(self) -> None:
-        """Handle cancel input based on current battle phase."""
-        if self.state.battle.phase == BattlePhase.UNIT_MOVING:
-            self._handle_movement_cancel()
-        elif self.state.battle.phase == BattlePhase.ACTION_MENU:
-            self._handle_action_menu_cancel()
-        elif self.state.battle.phase == BattlePhase.TARGETING:
-            self._handle_targeting_cancel()
-        elif self.state.battle.phase == BattlePhase.UNIT_ACTING:
-            self._handle_unit_acting_cancel()
-    
+                return True
+        return False
+
     def _handle_movement_cancel(self) -> None:
         """Handle cancel during movement phase."""
-        self.state.reset_selection()
-        self.state.battle.phase = BattlePhase.UNIT_SELECTION
-    
-    def _handle_action_menu_cancel(self) -> None:
-        """Handle cancel during action menu phase."""
-        if self.state.battle.selected_unit_id:
-            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-            if unit and not unit.has_moved:
-                self.state.ui.close_action_menu()
-                self.state.battle.phase = BattlePhase.UNIT_MOVING
-                movement_range = self.game_map.calculate_movement_range(unit)
-                self.state.battle.set_movement_range(movement_range)
-            else:
-                # Unit has already moved - restore to original position
-                self._restore_unit_to_original_position(unit)
-    
+        selected_unit_id = self.state.battle.selected_unit_id
+        original_position = self.state.battle.original_unit_position
+
+        # If unit hasn't moved, do nothing (as per TODO requirements)
+        if not selected_unit_id or not original_position:
+            return
+
+        unit = self.game_map.get_unit(selected_unit_id)
+        if not unit:
+            return
+
+        # Check if unit has actually moved from original position
+        if unit.position == original_position:
+            # Unit hasn't moved, do nothing
+            self._emit_log(f"{unit.name} hasn't moved - cancel ignored", category="UI")
+            return
+
+        # Unit has moved - return to original position
+        current_position = unit.position
+        self.game_map.move_unit(unit.unit_id, original_position)
+        self.state.cursor.set_position(original_position)
+
+        # Emit unit moved event for the return movement
+        self.event_manager.publish(
+            UnitMoved(
+                turn=self.state.battle.current_turn,
+                unit_name=unit.name,
+                unit_id=unit.unit_id,
+                team=unit.team,
+                from_position=(current_position.y, current_position.x),
+                to_position=(original_position.y, original_position.x),
+            ),
+            source="InputHandler",
+        )
+        self._emit_log(
+            f"{unit.name} returned to original position", category="MOVEMENT"
+        )
+
+        # Recalculate movement range for continued movement
+        movement_range = self.game_map.calculate_movement_range(unit)
+        self.state.battle.set_movement_range(movement_range)
+
+        # Stay in movement phase - don't end turn or call Wait
+        # This allows the player to continue moving the unit
+
     def _handle_targeting_cancel(self) -> None:
         """Handle cancel during targeting phase."""
         self.state.battle.attack_range = VectorArray()
         self.state.battle.selected_target = None
         self.state.battle.aoe_tiles = VectorArray()
-        self.state.battle.phase = BattlePhase.ACTION_MENU
-        if self.state.battle.selected_unit_id:
-            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-            if unit:
-                self._build_action_menu_for_unit(unit)
-    
+        # Delegate to hierarchical cancel system
+        self.action_menu_cancel()
+
+    def _handle_action_targeting_cancel(self) -> None:
+        """Handle cancel during action targeting phase."""
+        # Use the hierarchical cancel system directly - it now handles attack state clearing
+        self.action_menu_cancel()
+
     def _handle_unit_acting_cancel(self) -> None:
         """Handle cancel during unit acting phase."""
         if self.combat_manager:
             self.combat_manager.clear_attack_state()
-        self.state.battle.phase = BattlePhase.ACTION_MENU
-        if self.state.battle.selected_unit_id:
-            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
+        # Delegate to hierarchical cancel system
+        self.action_menu_cancel()
+
+    def _handle_inspect_confirm(self, position: Vector2) -> bool:
+        """Handle Enter key in inspect mode - show detailed tile and unit info."""
+        if not self.ui_manager:
+            return False
+
+        # Get tile information
+        if self.game_map and self.game_map.is_valid_position(position):
+            tile = self.game_map.get_tile(position)
+            unit = self.game_map.get_unit_at(position)
+
+            # Build inspection info
+            info_lines = []
+            info_lines.append("=== Tile Information ===")
+            info_lines.append(f"Position: ({position.x}, {position.y})")
+
+            if tile:
+                info_lines.append(f"Terrain: {tile.terrain_type.name}")
+                info_lines.append(f"Move Cost: {tile.move_cost}")
+                info_lines.append(f"Defense Bonus: +{tile.defense_bonus}")
+                # Tile doesn't have description, show terrain name instead
+                info_lines.append(f"Type: {tile.name}")
+            else:
+                info_lines.append("Terrain: Unknown")
+
+            # Add unit information if present
             if unit:
-                self._build_action_menu_for_unit(unit)
-    
-    def _restore_unit_to_original_position(self, unit: Optional["Unit"]) -> None:
-        """Restore unit to its original position if possible."""
-        if unit and self.state.battle.original_unit_position is not None:
-            # Restore unit to original position
-            if self.game_map.move_unit(unit.unit_id, self.state.battle.original_unit_position):
-                # TODO: Emit unit moved event for restoration
-                pass
-            unit.has_moved = False
+                info_lines.append("")
+                info_lines.append("=== Unit Information ===")
+                info_lines.append(f"Name: {unit.name}")
+                info_lines.append(f"Class: {unit.actor.unit_class.name}")
+                info_lines.append(f"Team: {unit.team.name}")
+                info_lines.append(f"HP: {unit.hp_current}/{unit.health.hp_max}")
+                info_lines.append(f"Strength: {unit.combat.strength}")
+                info_lines.append(f"Movement: {unit.movement.movement_points}")
+                info_lines.append(f"Speed: {unit.status.speed}")
+                info_lines.append(f"Can Move: {unit.can_move}")
+                info_lines.append(f"Can Act: {unit.can_act}")
 
-            # Go back to movement phase to allow re-positioning
-            self.state.ui.close_action_menu()
-            self.state.battle.phase = BattlePhase.UNIT_MOVING
-            movement_range = self.game_map.calculate_movement_range(unit)
-            self.state.battle.set_movement_range(movement_range)
+                wound_comp = unit.entity.get_component("Wound")
+                if wound_comp and hasattr(wound_comp, "wounds") and wound_comp.wounds:
+                    info_lines.append(f"Wounds: {len(wound_comp.wounds)}")
+                    for i, wound in enumerate(wound_comp.wounds):
+                        info_lines.append(f"  {i + 1}. {wound}")
 
-            # Position cursor on the restored unit
-            self.state.cursor.set_position(unit.position)
-        else:
-            # Fallback: deselect and refresh
-            self.state.reset_selection()
-            self.state.battle.phase = BattlePhase.UNIT_SELECTION
-    
-    def handle_tab_cycling(self) -> None:
-        """Handle TAB key cycling for different phases."""
-        if self.state.battle.phase == BattlePhase.UNIT_SELECTION:
-            self._cycle_selectable_units()
-        elif self.state.battle.phase == BattlePhase.UNIT_ACTING and self.combat_manager:
-            self.combat_manager.cycle_targetable_enemies()
-    
-    def _cycle_selectable_units(self) -> None:
-        """Cycle through selectable player units."""
-        # Get all selectable units if not already set
-        if not self.state.battle.selectable_units:
-            self._refresh_selectable_units()
-        
-        # Cycle to next unit
-        next_unit_id = self.state.battle.cycle_selectable_units()
-        if next_unit_id:
-            unit = self.game_map.get_unit(next_unit_id)
+            # Show inspection panel through UI manager
+            self.ui_manager.show_inspection_panel("\n".join(info_lines))
+
             if unit:
-                self.state.cursor.set_position(unit.position)
-    
-    def _refresh_selectable_units(self) -> None:
-        """Update the list of selectable player units."""
-        player_units = self.game_map.get_units_by_team(Team.PLAYER)
-        selectable_ids = [
-            unit.unit_id for unit in player_units if unit.can_move or unit.can_act
-        ]
-        self.state.battle.set_selectable_units(selectable_ids)
-    
-    def handle_action_menu_input(self, event: InputEvent) -> None:
-        """Handle input while action menu is open."""
-        if event.key == Key.UP or event.key == Key.W:
-            self.state.ui.move_action_menu_selection(-1)
-        elif event.key == Key.DOWN or event.key == Key.S:
-            self.state.ui.move_action_menu_selection(1)
-        elif event.is_confirm_key():
-            self.handle_confirm()
-        elif event.is_cancel_key():
-            self.handle_cancel()
-        # Add keyboard shortcuts
-        elif event.key == Key.A and "Attack" in self.state.ui.action_menu_items:
-            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Attack")
-            self.handle_confirm()
-        elif event.key == Key.W and "Wait" in self.state.ui.action_menu_items:
-            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Wait")
-            self.handle_confirm()
-        elif event.key == Key.M and "Move" in self.state.ui.action_menu_items:
-            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Move")
-            self.handle_confirm()
-    
-    def handle_main_menu_input(self, event: InputEvent) -> None:
-        """Handle input while in main menu phase."""
-        if self.scenario_menu:
-            action = self.scenario_menu.handle_input(event)
-            
-            if action == "load" and self.on_load_selected_scenario:
-                self.on_load_selected_scenario()
-            elif action == "quit" and self.on_quit:
-                self.on_quit()
-    
-    def handle_menu_input(self, event: InputEvent) -> None:
-        """Handle input events when a menu is open (placeholder for future implementation)."""
-        _ = event  # Placeholder implementation
-    
-    # Strategic TUI input handlers
-    def handle_overlay_input(self, event: InputEvent) -> None:
-        """Handle input while overlay (objectives/help/minimap) is open."""
-        if event.event_type == InputType.KEY_PRESS and self.ui_manager:
-            self.ui_manager.close_overlay()
-    
-    def handle_dialog_input(self, event: InputEvent) -> None:
-        """Handle input while confirmation dialog is open."""
-        if event.key in {Key.LEFT, Key.RIGHT}:
-            self.state.ui.move_dialog_selection(1 if event.key == Key.RIGHT else -1)
-        elif event.is_confirm_key():
-            self._handle_dialog_confirmation()
-        elif event.is_cancel_key():
-            self.state.ui.close_dialog()
-    
-    def _handle_dialog_confirmation(self) -> None:
-        """Handle dialog confirmation based on dialog type."""
-        if self.state.ui.active_dialog == "confirm_end_turn":
-            if self.state.ui.get_dialog_selection() == 0:  # Yes
-                if self.on_end_team_turn:
-                    self.on_end_team_turn()
-        elif self.state.ui.active_dialog == "confirm_friendly_fire":
-            if (
-                self.state.ui.get_dialog_selection() == 0  # Yes - proceed with attack
-                and self.combat_manager
-            ):
-                success = self.combat_manager.execute_confirmed_attack()
-                if success and self.on_end_unit_turn:
-                    self.on_end_unit_turn()
-        self.state.ui.close_dialog()
-    
-    def handle_forecast_input(self, event: InputEvent) -> None:
-        """Handle input while battle forecast is active."""
-        if event.event_type == InputType.KEY_PRESS:
-            self.state.ui.stop_forecast()
-    
-    # Direct action key handlers
-    def handle_objectives_key(self) -> None:
-        """Handle O key press to show objectives."""
-        if self.ui_manager:
-            self.ui_manager.show_objectives()
-    
-    def handle_help_key(self) -> None:
-        """Handle ? key press to show help."""
-        if self.ui_manager:
-            self.ui_manager.show_help()
-    
-    def handle_minimap_key(self) -> None:
-        """Handle M key press to show minimap."""
-        if self.ui_manager:
-            self.ui_manager.show_minimap()
-    
-    def handle_end_turn_key(self) -> None:
-        """Handle E key press to end turn (with confirmation)."""
-        self.state.ui.open_dialog("confirm_end_turn")
-    
-    def handle_attack_key(self) -> None:
-        """Handle A key press for direct attack."""
-        # Only allow during player turn and when a unit is selected
-        if self.state.battle.current_team != 0 or not self.state.battle.selected_unit_id:
-            return
+                self._emit_log(f"Inspecting {unit.name} at {position}", category="UI")
+            else:
+                self._emit_log(f"Inspecting tile at {position}", category="UI")
 
-        unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-        if not unit or not unit.can_act or not self.combat_manager:
-            return
-        
-        # Handle quick attack based on current phase
-        if self.state.battle.phase == BattlePhase.UNIT_SELECTION:
-            # Unit just selected, transition to attack directly
-            self.state.battle.phase = BattlePhase.UNIT_ACTING
-            self.combat_manager.setup_attack_targeting(unit)
-        elif self.state.battle.phase == BattlePhase.UNIT_MOVING:
-            # Unit is in movement, skip to attack
-            self.state.battle.movement_range = VectorArray()
-            self.state.battle.phase = BattlePhase.UNIT_ACTING
-            self.combat_manager.setup_attack_targeting(unit)
-        elif self.state.battle.phase == BattlePhase.ACTION_MENU:
-            # Use normal action selection
-            self._handle_action_selection("Attack")
-    
-    def handle_wait_key(self) -> None:
-        """Handle W key press for direct wait."""
-        # Only allow during player turn and when a unit is selected
-        if self.state.battle.current_team != 0 or not self.state.battle.selected_unit_id:
-            return
+        return True
 
-        unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-        if not unit:
-            return
-        
-        # When waiting, unit should not be able to move or act anymore
-        unit.has_moved = True  # Prevent further movement
-        unit.has_acted = True  # Prevent further actions
-        if self.on_end_unit_turn:
-            self.on_end_unit_turn()
-    
-    # Action handling
-    def _handle_action_selection(self, action: str) -> None:
-        """Handle the selected action from the action menu."""
-        if action == "Move":
-            # Go back to movement targeting
-            if self.state.battle.selected_unit_id:
-                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-                if unit:
-                    self.state.ui.close_action_menu()
-                    self.state.battle.phase = BattlePhase.UNIT_MOVING
-                    movement_range = self.game_map.calculate_movement_range(unit)
-                    self.state.battle.set_movement_range(movement_range)
-        
-        elif action == "Attack":
-            # Go to attack targeting
-            if self.state.battle.selected_unit_id and self.combat_manager:
-                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-                if unit:
-                    self.state.ui.close_action_menu()
-                    self.state.battle.phase = BattlePhase.UNIT_ACTING
-                    self.combat_manager.setup_attack_targeting(unit)
-        
-        elif action == "Wait":
-            # End unit's turn
-            if self.state.battle.selected_unit_id:
-                unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-                if unit:
-                    # When waiting, unit should not be able to move or act anymore
-                    unit.has_moved = True  # Prevent further movement
-                    unit.has_acted = True  # Prevent further actions
-                    self.state.ui.close_action_menu()
-                    if self.on_end_unit_turn:
-                        self.on_end_unit_turn()
-    
     def _build_action_menu_for_unit(self, unit: "Unit") -> None:
         """Build action menu items based on unit's current capabilities."""
         actions = []
-        
-        # Move action - available if unit hasn't moved yet
-        if not unit.has_moved and unit.can_move:
-            actions.append("Move")
-        
-        # Attack action - always show (availability checked in selection)
+
         if unit.can_act:
             actions.append("Attack")
-        
-        # Wait action - always available
+
         actions.append("Wait")
-        
         self.state.ui.open_action_menu(actions)
-        
-        # Auto-select the most appropriate action
-        self._auto_select_action_menu_item(unit)
-    
-    def _auto_select_action_menu_item(self, unit: "Unit") -> None:
-        """Automatically select the most appropriate action in the menu."""
-        if not unit.can_act:
-            # Unit can't act, select Wait
-            if "Wait" in self.state.ui.action_menu_items:
-                self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Wait")
-            return
-        
-        # Check if there are ENEMY targets in attack range (not friendlies)
-        attack_range = self.game_map.calculate_attack_range(unit)
-        has_enemy_targets = False
-        
-        for position in attack_range:
-            target_unit = self.game_map.get_unit_at(position)
-            if (
-                target_unit
-                and target_unit.unit_id != unit.unit_id
-                and target_unit.team != unit.team
-            ):
-                has_enemy_targets = True
-                break
-        
-        # Select Attack only if there are enemy targets, otherwise Wait
-        if has_enemy_targets and "Attack" in self.state.ui.action_menu_items:
-            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Attack")
-        elif "Wait" in self.state.ui.action_menu_items:
-            self.state.ui.action_menu_selection = self.state.ui.action_menu_items.index("Wait")
+
+        # Auto-select appropriate action
+        if unit.can_act:
+            attack_range = self.game_map.calculate_attack_range(unit)
+            has_enemy_targets = any(
+                self.game_map.get_unit_at(pos)
+                and self.game_map.get_unit_at(pos).team != unit.team  # type: ignore[union-attr]
+                for pos in attack_range
+            )
+
+            if has_enemy_targets and "Attack" in actions:
+                self.state.ui.action_menu_selection = actions.index("Attack")
+            elif "Wait" in actions:
+                self.state.ui.action_menu_selection = actions.index("Wait")
+
+    # ==================== CONFIGURATION AND DEBUG ====================
+
+    def reload_key_config(self) -> bool:
+        """Reload key configuration from file."""
+        return self.key_config.reload_config()
+
+    def get_debug_info(self) -> dict[str, Any]:
+        """Get debug information about the input system."""
+        return {
+            "current_context": self.context_manager.get_current_context().value,
+            "active_scheme": self.key_config.get_active_scheme(),
+            "config_validation": self.key_config.validate_config(),
+            "action_registry": self.action_registry.get_debug_info(),
+        }

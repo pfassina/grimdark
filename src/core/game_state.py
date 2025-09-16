@@ -14,6 +14,7 @@ from enum import Enum, auto
 from typing import Any, Optional
 
 from .data_structures import Vector2, VectorArray
+from .timeline import Timeline
 
 
 class GamePhase(Enum):
@@ -27,16 +28,19 @@ class GamePhase(Enum):
 
 
 class BattlePhase(Enum):
-    """Phases within a battle."""
+    """Phases within a timeline-based battle."""
 
-    PLAYER_TURN_START = auto()
-    UNIT_SELECTION = auto()
-    UNIT_MOVING = auto()
-    ACTION_MENU = auto()
-    TARGETING = auto()  # Target selection with battle forecast
-    UNIT_ACTING = auto()
-    ENEMY_TURN = auto()
-    TURN_END = auto()
+    # Core timeline phases
+    TIMELINE_PROCESSING = auto()    # Processing timeline and determining next unit
+    UNIT_SELECTION = auto()        # Multiple units available, player selects which acts
+    UNIT_MOVING = auto()           # Unit moves around the battlefield
+    UNIT_ACTION_SELECTION = auto()  # Current unit selects action
+    ACTION_TARGETING = auto()       # Selecting target for chosen action
+    ACTION_EXECUTION = auto()       # Executing the action
+    INTERRUPT_RESOLUTION = auto()   # Resolving any interrupts triggered
+    
+    # Special modes
+    INSPECT = auto()               # Free cursor inspection mode
 
 
 @dataclass
@@ -93,10 +97,12 @@ class UIState:
     action_menu_items: list[str] = field(default_factory=list)
     action_menu_selection: int = 0
 
-    active_overlay: Optional[str] = None  # "objectives", "help", "minimap"
+    active_overlay: Optional[str] = None  # "objectives", "help", "minimap", "expanded_log"
     active_dialog: Optional[str] = None  # "confirm_end_turn", etc.
     dialog_selection: int = 0  # For dialog option selection
     active_forecast: bool = False  # Battle forecast during targeting
+    expanded_log: bool = False  # Expanded log view state
+    expanded_log_scroll: int = 0  # Scroll position in expanded log (0 = bottom/latest)
 
     def open_menu(self, menu_name: str) -> None:
         self.active_menu = menu_name
@@ -171,6 +177,31 @@ class UIState:
     def is_forecast_active(self) -> bool:
         return self.active_forecast
 
+    def open_expanded_log(self) -> None:
+        """Open the expanded log view."""
+        self.expanded_log = True
+        self.active_overlay = "expanded_log"
+
+    def close_expanded_log(self) -> None:
+        """Close the expanded log view."""
+        self.expanded_log = False
+        self.expanded_log_scroll = 0  # Reset scroll position
+        if self.active_overlay == "expanded_log":
+            self.active_overlay = None
+    
+    def scroll_expanded_log(self, delta: int) -> None:
+        """Scroll the expanded log up (positive) or down (negative)."""
+        if self.expanded_log:
+            self.expanded_log_scroll = max(0, self.expanded_log_scroll + delta)
+    
+    def reset_expanded_log_scroll(self) -> None:
+        """Reset scroll to bottom (latest messages)."""
+        self.expanded_log_scroll = 0
+
+    def is_expanded_log_open(self) -> bool:
+        """Check if expanded log view is active."""
+        return self.expanded_log
+
     def is_any_modal_open(self) -> bool:
         return (
             self.is_overlay_open()
@@ -181,10 +212,21 @@ class UIState:
 
 @dataclass
 class BattleState:
-    """Encapsulates battle-specific state and behaviour."""
+    """Encapsulates battle-specific state and behaviour.
+    
+    Supports both timeline-based and legacy phase-based combat systems.
+    """
 
-    phase: BattlePhase = BattlePhase.UNIT_SELECTION
-
+    phase: BattlePhase = BattlePhase.TIMELINE_PROCESSING
+    previous_phase: Optional[BattlePhase] = None  # For restoring after inspect mode
+    
+    # Timeline system
+    timeline: Timeline = field(default_factory=Timeline)
+    current_acting_unit_id: Optional[str] = None
+    pending_action: Optional[str] = None  # Name of action being processed
+    pending_action_target: Optional[Any] = None
+    
+    # Legacy phase-based system (for backward compatibility)
     current_turn: int = 1
     current_team: int = 0
 
@@ -193,6 +235,7 @@ class BattleState:
     original_unit_position: Optional[Vector2] = None
 
     movement_range: VectorArray = field(default_factory=VectorArray)
+    original_movement_range: VectorArray = field(default_factory=VectorArray)
     attack_range: VectorArray = field(default_factory=VectorArray)
 
     selected_target: Optional[Vector2] = None
@@ -209,6 +252,7 @@ class BattleState:
         self.selected_tile_position = None
         self.original_unit_position = None
         self.movement_range = VectorArray()
+        self.original_movement_range = VectorArray()
         self.attack_range = VectorArray()
         self.selected_target = None
         self.aoe_tiles = VectorArray()
@@ -230,13 +274,68 @@ class BattleState:
         return self.attack_range.contains(position)
 
     def start_player_turn(self) -> None:
+        """Legacy method for backward compatibility."""
         self.phase = BattlePhase.PLAYER_TURN_START
         self.current_turn += 1
         self.reset_selection()
 
     def start_enemy_turn(self) -> None:
+        """Legacy method for backward compatibility."""
         self.phase = BattlePhase.ENEMY_TURN
         self.reset_selection()
+    
+    # Timeline-based methods
+    def start_timeline_processing(self) -> None:
+        """Begin timeline-based combat processing."""
+        self.phase = BattlePhase.TIMELINE_PROCESSING
+        self.current_acting_unit_id = None
+        self.pending_action = None
+        self.pending_action_target = None
+        self.reset_selection()
+    
+    def set_acting_unit(self, unit_id: str) -> None:
+        """Set the current acting unit from timeline."""
+        self.current_acting_unit_id = unit_id
+        self.phase = BattlePhase.UNIT_ACTION_SELECTION
+    
+    def set_pending_action(self, action_name: str, target: Optional[Any] = None) -> None:
+        """Set the action being processed."""
+        self.pending_action = action_name
+        self.pending_action_target = target
+        
+        if target is None:
+            self.phase = BattlePhase.ACTION_TARGETING
+        else:
+            self.phase = BattlePhase.ACTION_EXECUTION
+    
+    def clear_pending_action(self) -> None:
+        """Clear the pending action state."""
+        self.pending_action = None
+        self.pending_action_target = None
+        # Note: Don't clear current_acting_unit_id or change phase here
+        # Let the phase manager handle phase transitions through events
+    
+    def is_timeline_mode(self) -> bool:
+        """Check if we're using timeline-based combat."""
+        return self.phase in [
+            BattlePhase.TIMELINE_PROCESSING,
+            BattlePhase.UNIT_ACTION_SELECTION, 
+            BattlePhase.ACTION_TARGETING,
+            BattlePhase.ACTION_EXECUTION,
+            BattlePhase.INTERRUPT_RESOLUTION
+        ]
+    
+    def get_timeline_preview(self, count: int = 5) -> list[str]:
+        """Get preview of upcoming timeline entries for UI display.
+        
+        Args:
+            count: Number of entries to preview
+            
+        Returns:
+            List of unit IDs in timeline order
+        """
+        entries = self.timeline.get_preview(count)
+        return [entry.entity_id for entry in entries if entry.entity_type == "unit"]
 
     def set_selectable_units(self, unit_ids: list[str]) -> None:
         self.selectable_units = unit_ids.copy()
@@ -297,6 +396,7 @@ class GameState:
         self.battle.reset_selection()
         self.ui.close_action_menu()
         self.ui.close_overlay()
+        self.ui.close_expanded_log()
         self.ui.close_dialog()
         self.ui.stop_forecast()
 

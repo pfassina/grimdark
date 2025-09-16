@@ -69,7 +69,7 @@ class ScenarioRegion:
                 pos = Vector2(y, x)
                 if game_map.is_valid_position(pos) and not game_map.get_unit_at(pos):
                     tile = game_map.get_tile(pos)
-                    if tile and not tile.blocks_movement:
+                    if not tile.blocks_movement:
                         positions.append(pos)
         return positions
 
@@ -173,7 +173,7 @@ class UnitData:
     unit_class: str  # Unit class as string (e.g., "KNIGHT")
     team: str  # Team affiliation as string (e.g., "PLAYER")
     position: Vector2  # Map position
-    stats_override: Optional[dict[str, int]] = None  # Optional stat modifications
+    stats_override: Optional[dict[str, Any]] = None  # Optional stat modifications (includes AI behavior strings)
 
 
 @dataclass

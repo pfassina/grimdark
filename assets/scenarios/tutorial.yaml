@@ -41,6 +41,7 @@ units:
     stats_override:
       hp_max: 10      # Weaker HP for easy victory
       strength: 2     # Reduced damage
+      ai_behavior: "INACTIVE"  # Training dummy just stands there
 
 # Victory and defeat conditions
 objectives:

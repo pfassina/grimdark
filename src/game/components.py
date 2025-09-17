@@ -4,7 +4,7 @@ This module contains the concrete component implementations for the Grimdark SRP
 including the 5 core unit components: Actor, Health, Movement, Combat, and Status.
 """
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from ..core.components import Component
 from ..core.game_enums import UnitClass, Team, UNIT_CLASS_NAMES
@@ -313,7 +313,6 @@ class CombatComponent(Component):
             return False
         
         # Cast to MovementComponent to access position attribute
-        from typing import cast
         movement = cast('MovementComponent', movement_component)
         
         # Calculate Manhattan distance
@@ -365,7 +364,6 @@ class StatusComponent(Component):
         if health_component is None:
             return False
         
-        from typing import cast
         health = cast('HealthComponent', health_component)
         if not health.is_alive():
             return False
@@ -383,7 +381,6 @@ class StatusComponent(Component):
         if health_component is None:
             return False
         
-        from typing import cast
         health = cast('HealthComponent', health_component)
         if not health.is_alive():
             return False

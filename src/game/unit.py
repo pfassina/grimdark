@@ -5,7 +5,7 @@ while maintaining the exact same API as the original Unit class for backward
 compatibility.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from ..core.game_enums import UnitClass, Team
 from ..core.data_structures import Vector2
@@ -188,57 +188,48 @@ class Unit:
     @property
     def _actor(self) -> ActorComponent:
         """Get Actor component (internal helper)."""
-        from typing import cast
         return cast(ActorComponent, self.entity.require_component("Actor"))
     
     @property  
     def _health(self) -> HealthComponent:
         """Get Health component (internal helper)."""
-        from typing import cast
         return cast(HealthComponent, self.entity.require_component("Health"))
     
     @property
     def _movement(self) -> MovementComponent:
         """Get Movement component (internal helper)."""
-        from typing import cast
         return cast(MovementComponent, self.entity.require_component("Movement"))
     
     @property
     def _combat(self) -> CombatComponent:
         """Get Combat component (internal helper)."""
-        from typing import cast
         return cast(CombatComponent, self.entity.require_component("Combat"))
     
     @property
     def _status(self) -> StatusComponent:
         """Get Status component (internal helper)."""
-        from typing import cast
         return cast(StatusComponent, self.entity.require_component("Status"))
     
     @property
     def _interrupt(self) -> InterruptComponent:
         """Get Interrupt component (internal helper)."""
-        from typing import cast
         return cast(InterruptComponent, self.entity.require_component("Interrupt"))
     
     @property
     def _morale(self) -> "MoraleComponent":
         """Get Morale component (internal helper)."""
-        from typing import cast
         from .components import MoraleComponent
         return cast(MoraleComponent, self.entity.require_component("Morale"))
     
     @property
     def _wound(self) -> "WoundComponent":
         """Get Wound component (internal helper)."""
-        from typing import cast
         from .components import WoundComponent
         return cast(WoundComponent, self.entity.require_component("Wound"))
     
     @property
     def _ai(self) -> AIComponent:
         """Get AI component (internal helper)."""
-        from typing import cast
         return cast(AIComponent, self.entity.require_component("AI"))
     
     @property

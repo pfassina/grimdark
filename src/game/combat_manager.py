@@ -109,13 +109,12 @@ class CombatManager:
         # Calculate AOE tiles for any position in attack range (including empty tiles)
         if cursor_pos in self.state.battle.attack_range and self.state.battle.selected_unit_id:
             unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
-            if unit and hasattr(unit.combat, "aoe_pattern"):
-                aoe_pattern = unit.combat.aoe_pattern
-                self.state.battle.aoe_tiles = self.game_map.calculate_aoe_tiles(
-                    cursor_pos, aoe_pattern
-                )
-            else:
-                self.state.battle.aoe_tiles = VectorArray([cursor_pos])
+            if unit is None:
+                raise ValueError(f"Selected unit '{self.state.battle.selected_unit_id}' not found on map. UI state inconsistent with game state.")
+            aoe_pattern = unit.combat.aoe_pattern
+            self.state.battle.aoe_tiles = self.game_map.calculate_aoe_tiles(
+                cursor_pos, aoe_pattern
+            )
         else:
             self.state.battle.aoe_tiles = VectorArray()
     

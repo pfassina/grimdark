@@ -4,7 +4,7 @@ This manager implements the grimdark principle that battles become more dangerou
 over time, punishing players who take too long and forcing difficult tactical decisions.
 """
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 from dataclasses import dataclass
 from enum import Enum, auto
 
@@ -12,6 +12,7 @@ from ..core.data_structures import Vector2
 from ..core.events import (
     LogMessage, EventType
 )
+from .components import ActorComponent
 
 if TYPE_CHECKING:
     from ..core.components import Entity
@@ -163,7 +164,9 @@ class EscalationManager:
         # Find the defeated unit entity for reporting
         for unit in self.game_map.units:
             actor = unit.entity.get_component("Actor")
-            if actor and actor.name == event.unit_name:
+            assert actor is not None, f"Unit {unit.unit_id} missing Actor component"
+            assert isinstance(actor, ActorComponent), f"Actor component for {unit.unit_id} is not ActorComponent"
+            if actor.name == event.unit_name:
                 self.report_casualty(unit.entity, is_enemy)
                 break
     
@@ -384,7 +387,6 @@ class EscalationManager:
         for unit in self.game_map.units:
             morale_component = unit.entity.get_component("Morale")
             if morale_component:
-                from typing import cast
                 from .components import MoraleComponent
                 morale = cast(MoraleComponent, morale_component)
                 morale.modify_morale(morale_penalty, "prolonged_battle")

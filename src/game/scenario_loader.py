@@ -1,5 +1,6 @@
 import json
 import os
+import random
 from typing import Optional, Any
 from pathlib import Path
 
@@ -199,16 +200,11 @@ class ScenarioLoader:
                 actor = objects_by_name[actor_name]  
                 is_unit = False
             else:
-                print(f"Warning: Actor '{actor_name}' not found in units or objects")
-                continue
+                raise ValueError(f"Actor '{actor_name}' referenced in placements but not found in units or objects. Check scenario configuration.")
             
             # Resolve placement to coordinates
             coordinates = ScenarioLoader._resolve_placement_to_coordinates(
                 placement, scenario, game_map)
-            
-            if coordinates is None:
-                print(f"Warning: Could not resolve placement for '{actor_name}'")
-                continue
             
             # Apply coordinates to the actor
             if is_unit:
@@ -219,9 +215,8 @@ class ScenarioLoader:
     
     @staticmethod
     def _resolve_placement_to_coordinates(placement: ActorPlacement, scenario: Scenario, 
-                                        game_map: GameMap) -> Optional[Vector2]:
+                                        game_map: GameMap) -> Vector2:
         """Resolve a single placement intent to coordinates."""
-        import random
         
         if placement.placement_at:
             return placement.placement_at
@@ -229,22 +224,19 @@ class ScenarioLoader:
         if placement.placement_marker:
             marker = scenario.markers.get(placement.placement_marker)
             if not marker:
-                print(f"Warning: Marker '{placement.placement_marker}' not found")
-                return None
+                raise ValueError(f"Marker '{placement.placement_marker}' not found in scenario")
             return marker.position
         
         if not placement.placement_region:
-            return None
+            raise ValueError("Placement must specify either 'at', 'marker', or 'region'")
             
         region = scenario.regions.get(placement.placement_region)
         if not region:
-            print(f"Warning: Region '{placement.placement_region}' not found")
-            return None
+            raise ValueError(f"Region '{placement.placement_region}' not found in scenario")
         
         free_positions = region.get_free_positions(game_map)
         if not free_positions:
-            print(f"Warning: No free positions in region '{placement.placement_region}'")
-            return None
+            raise ValueError(f"No free positions available in region '{placement.placement_region}'")
         
         if placement.placement_policy == placement.placement_policy.RANDOM_FREE_TILE:
             return random.choice(free_positions)
@@ -257,12 +249,12 @@ class ScenarioLoader:
         if placement.placement_policy == placement.placement_policy.LINE_LEFT_TO_RIGHT:
             # Sort by x coordinate, then by y
             free_positions.sort(key=lambda pos: (pos[0], pos[1]))
-            return free_positions[0] if free_positions else None
+            return free_positions[0]
         
         if placement.placement_policy == placement.placement_policy.LINE_TOP_TO_BOTTOM:
             # Sort by y coordinate, then by x
             free_positions.sort(key=lambda pos: (pos[1], pos[0]))
-            return free_positions[0] if free_positions else None
+            return free_positions[0]
         
         return random.choice(free_positions)
     
@@ -322,7 +314,7 @@ class ScenarioLoader:
                 description=obj_data.get("description", "Keep at least one unit alive")
             )
         
-        return None
+        raise ValueError(f"Unknown objective type: '{obj_type}'. Supported types: defeat_all_enemies, turn_limit, all_units_defeated")
     
     @staticmethod
     def apply_map_overrides(game_map: GameMap, overrides: dict[str, Any]) -> None:
@@ -517,10 +509,9 @@ class ScenarioLoader:
                             source="ScenarioLoader"
                         )
                 else:
-                    print(f"Warning: Could not place unit '{unit.name}' at ({unit.position.x}, {unit.position.y})")
+                    raise ValueError(f"Could not place unit '{unit.name}' at ({unit.position.x}, {unit.position.y}). Position may be blocked or invalid.")
             except (KeyError, ValueError) as e:
-                print(f"Warning: Error creating unit '{unit_data.name}': {e}")
-                continue
+                raise ValueError(f"Error creating unit '{unit_data.name}': {e}") from e
     
     @staticmethod
     def save_scenario(scenario: Scenario, file_path: str) -> None:

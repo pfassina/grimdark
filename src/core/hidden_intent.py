@@ -58,7 +58,7 @@ class IntentInfo:
     # Deception
     is_deception: bool = False
     real_action: Optional["Action"] = None
-    real_target: Optional[object] = None
+    real_target: Optional[Vector2] = None
 
     # Descriptive text
     hidden_description: str = "???"

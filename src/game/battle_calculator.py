@@ -4,6 +4,8 @@ Battle calculation system for damage prediction and forecasting.
 This module provides battle forecast calculations separate from actual combat resolution,
 allowing the UI to show damage/hit/crit predictions without affecting game state.
 """
+import random
+
 from ..core.renderable import BattleForecastRenderData
 from .unit import Unit
 
@@ -61,7 +63,6 @@ class BattleCalculator:
     @staticmethod
     def _calculate_damage(attacker: Unit, defender: Unit) -> int:
         """Calculate expected damage from attacker to defender with variance."""
-        import random
         
         # Basic formula: Strength - Defense/2, minimum 1 (matches combat_resolver.py)
         base_damage = max(1, attacker.combat.strength - defender.combat.defense // 2)

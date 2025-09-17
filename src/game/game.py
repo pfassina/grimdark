@@ -72,6 +72,43 @@ class Game:
         if self.game_map is None:
             raise RuntimeError("Game map not initialized. Call initialize() first.")
         return self.game_map
+    
+    def _ensure_ui_manager(self) -> "UIManager":
+        """Ensure ui_manager is initialized, raise error if not."""
+        if self.ui_manager is None:
+            raise RuntimeError("UI manager not initialized. Call initialize() first.")
+        return self.ui_manager
+    
+    def _ensure_combat_manager(self) -> "CombatManager":
+        """Ensure combat_manager is initialized, raise error if not."""
+        if self.combat_manager is None:
+            raise RuntimeError("Combat manager not initialized. Call initialize() first.")
+        return self.combat_manager
+    
+    def _ensure_timeline_manager(self) -> "TimelineManager":
+        """Ensure timeline_manager is initialized, raise error if not."""  
+        if self.timeline_manager is None:
+            raise RuntimeError("Timeline manager not initialized. Call initialize() first.")
+        return self.timeline_manager
+    
+    def _ensure_render_builder(self) -> "RenderBuilder":
+        """Ensure render_builder is initialized, raise error if not."""
+        if self.render_builder is None:
+            raise RuntimeError("Render builder not initialized. Call initialize() first.")
+        return self.render_builder
+    
+    def _ensure_input_handler(self) -> "InputHandler":
+        """Ensure input_handler is initialized, raise error if not."""
+        if self.input_handler is None:
+            raise RuntimeError("Input handler not initialized. Call initialize() first.")
+        return self.input_handler
+    
+    def _ensure_log_manager(self) -> "LogManager":
+        """Ensure log_manager is initialized, raise error if not."""
+        if self.log_manager is None:
+            raise RuntimeError("Log manager not initialized. Call initialize() first.")
+        return self.log_manager
+
 
     def initialize(self) -> None:
         """Initialize the game and all manager systems."""
@@ -131,7 +168,8 @@ class Game:
         )
         
         # Set debug callback for event logging
-        self.event_manager.set_debug_callback(self.log_manager.debug)
+        log_manager = self._ensure_log_manager()
+        self.event_manager.set_debug_callback(log_manager.debug)
 
         # Initialize phase manager (needs to be early to handle phase transitions)
         self.phase_manager = PhaseManager(
@@ -222,21 +260,21 @@ class Game:
                 self.ui_manager.set_scenario(self.scenario)
 
         # Update Render Builder with the game map and UI manager
-        self.render_builder.game_map = game_map
-        self.render_builder.ui_manager = self.ui_manager
+        render_builder = self._ensure_render_builder()
+        render_builder.game_map = game_map
+        render_builder.ui_manager = self._ensure_ui_manager()
 
         # Game-specific managers are created during scenario loading
         # This avoids duplicate instances and ensures they're properly initialized with the correct scenario
 
-        # Update InputHandler with newly created managers
-        self.input_handler.ui_manager = self.ui_manager
-        self.input_handler.combat_manager = self.combat_manager
-        self.input_handler.timeline_manager = self.timeline_manager
+        # Update InputHandler with map-dependent managers
+        input_handler = self._ensure_input_handler()
+        input_handler.ui_manager = self._ensure_ui_manager()
+        # Note: combat_manager and timeline_manager are updated separately after scenario loading
 
     def _initialize_additional_managers(self, game_map: "GameMap") -> None:
         """Initialize the additional managers that were migrated to EventManager."""
         from .escalation_manager import EscalationManager
-        from .hazard_manager import HazardManager
         from .morale_manager import MoraleManager
 
         # Morale Manager
@@ -287,7 +325,7 @@ class Game:
         """Emit a log message event."""
         self.event_manager.publish(
             LogMessage(
-                turn=self.state.battle.current_turn if self.state.battle else 0,
+                turn=self.state.battle.current_turn,
                 message=message,
                 category=category,
                 level=level,
@@ -309,14 +347,14 @@ class Game:
 
             # Initialize battle system if in battle phase
             if self.state.phase == GamePhase.BATTLE:
-                self.log_manager.system("Initializing battle system...")
+                self._emit_log("Initializing battle system...", level="SYSTEM")
                 if self.timeline_manager:
-                    self.log_manager.system("Using timeline manager")
+                    self._emit_log("Using timeline manager", level="SYSTEM")
                     # Timeline system handles cursor positioning automatically
                     self.timeline_manager.initialize_battle_timeline()
                 else:
-                    self.log_manager.warning(
-                        "Timeline manager not available, using fallback"
+                    self._emit_log(
+                        "Timeline manager not available, using fallback", level="WARNING"
                     )
                     # Position cursor on first player unit for legacy system
                     self._position_cursor_on_first_player_unit()
@@ -365,7 +403,8 @@ class Game:
         # Handle timeline processing when in battle
         if self.state.phase == GamePhase.BATTLE and self.timeline_manager:
             # Debug: Log battle phase every frame when debugging is on
-            if self.log_manager.is_debug_enabled():
+            log_manager = self._ensure_log_manager()
+            if log_manager.is_debug_enabled():
                 current_phase = self.state.battle.phase
                 if (
                     not hasattr(self, "_last_logged_phase")
@@ -378,14 +417,16 @@ class Game:
                         selected_unit_id = self.state.battle.selected_unit_id
                         if movement_range_size == 0 and selected_unit_id:
                             # This is the bug! Unit is in UNIT_MOVING phase but has no movement range
-                            self.log_manager.error("*** CRITICAL BUG DETECTED ***")
-                            self.log_manager.error(
-                                f"Unit {selected_unit_id} is in UNIT_MOVING phase but has NO movement range!"
+                            self._emit_log("*** CRITICAL BUG DETECTED ***", level="ERROR")
+                            self._emit_log(
+                                f"Unit {selected_unit_id} is in UNIT_MOVING phase but has NO movement range!",
+                                level="ERROR"
                             )
 
                             # Try to recover by forcing timeline processing
-                            self.log_manager.error(
-                                "Attempting recovery by forcing timeline processing..."
+                            self._emit_log(
+                                "Attempting recovery by forcing timeline processing...",
+                                level="ERROR"
                             )
                             # Recovery: Let TimelineManager handle this transition properly
                             # TimelineManager should emit TimelineProcessed event
@@ -404,9 +445,10 @@ class Game:
                     if queue_size > 0 and not is_empty:
                         # Show next few entries for debugging
                         preview = self.timeline_manager.timeline.get_preview(2)
-                        for i, entry in enumerate(preview):
+                        for entry in preview:
                             if entry.entity_type == "unit":
-                                unit = self.game_map.get_unit(entry.entity_id)
+                                game_map = self._ensure_game_map()
+                                unit = game_map.get_unit(entry.entity_id)
                                 assert unit is not None, (
                                     f"Timeline entry references non-existent unit: {entry.entity_id}"
                                 )
@@ -493,7 +535,7 @@ class Game:
                     self._refresh_selectable_units()
 
             except Exception as e:
-                self.log_manager.error(f"Failed to load scenario: {e}")
+                self._emit_log(f"Failed to load scenario: {e}", level="ERROR")
                 # Stay in main menu on error
 
     def _reinitialize_managers_for_new_scenario(self) -> None:
@@ -562,9 +604,9 @@ class Game:
         if self.ui_manager:
             self.ui_manager.show_game_over_dialog("victory", victory_message)
         
-        self.log_manager.system("=== VICTORY! ===")
+        self._emit_log("=== VICTORY! ===", level="SYSTEM")
         if self.scenario:
-            self.log_manager.system(f"Scenario '{self.scenario.name}' completed!")
+            self._emit_log(f"Scenario '{self.scenario.name}' completed!", level="SYSTEM")
 
     def handle_defeat(self) -> None:
         """Handle defeat condition."""
@@ -587,9 +629,9 @@ class Game:
         if self.ui_manager:
             self.ui_manager.show_game_over_dialog("defeat", defeat_message)
         
-        self.log_manager.system("=== DEFEAT ===")
+        self._emit_log("=== DEFEAT ===", level="SYSTEM")
         if self.scenario:
-            self.log_manager.system(f"Failed scenario: {self.scenario.name}")
+            self._emit_log(f"Failed scenario: {self.scenario.name}", level="SYSTEM")
 
     def update_movement_preview(self) -> None:
         """Update movement preview (placeholder for future implementation)."""
@@ -620,8 +662,9 @@ class Game:
     def _handle_ai_turn(self, unit, ai_decision) -> None:
         """Handle AI unit taking its turn."""
         # Log the AI decision
-        self.log_manager.ai(
-            f"AI {unit.name} executes {ai_decision.action_name}: {ai_decision.reasoning}"
+        self._emit_log(
+            f"AI {unit.name} executes {ai_decision.action_name}: {ai_decision.reasoning}",
+            category="AI"
         )
 
         # CRITICAL: Actually execute the AI decision!
@@ -631,7 +674,7 @@ class Game:
             )
 
             if result != ActionResult.SUCCESS:
-                self.log_manager.error(f"AI action failed with result: {result}")
+                self._emit_log(f"AI action failed with result: {result}", level="ERROR")
 
             # AI action complete - TimelineManager should handle continuation
             # TimelineManager should emit TimelineProcessed when AI turn ends
@@ -734,12 +777,10 @@ class Game:
 
     def _handle_system_events(self, event) -> None:
         """Handle events that affect internal game systems."""
-        from ..core.events import UnitAttacked, UnitDamaged, UnitDefeated
+        from ..core.events import UnitDamaged, UnitDefeated
 
         if isinstance(event, UnitDefeated):
             self._handle_unit_defeated_event(event)
-        elif isinstance(event, UnitAttacked):
-            self._handle_unit_attacked_event(event)
         elif isinstance(event, UnitDamaged):
             self._handle_unit_damaged_event(event)
 
@@ -797,6 +838,7 @@ class Game:
     def _emit_unit_moved(
         self,
         unit_name: str,
+        unit_id: str,
         team: Team,
         from_pos: tuple[int, int],
         to_pos: tuple[int, int],
@@ -805,6 +847,7 @@ class Game:
         event = UnitMoved(
             turn=self.state.battle.current_turn,
             unit_name=unit_name,
+            unit_id=unit_id,
             team=team,
             from_position=from_pos,
             to_position=to_pos,

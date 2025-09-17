@@ -4,6 +4,7 @@ Log management system for game messages and debugging.
 This module provides centralized logging with categorization, filtering,
 and efficient storage for display in the game's UI.
 """
+import os
 from collections import deque
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -134,7 +135,7 @@ class LogManager:
             formatted_messages.append(msg.format(include_timestamp=False, include_category=True))
         
         # Update game state with log data (game state is required)
-        self.game_state.log_data = {
+        self.game_state.state_data['log_data'] = {
             'messages': formatted_messages,
             'debug_enabled': self.is_debug_enabled(),
             'total_messages': len(self.messages)
@@ -343,8 +344,6 @@ class LogManager:
             True if save was successful, False otherwise
         """
         try:
-            from datetime import datetime
-            import os
             
             # Generate timestamp for filename
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")

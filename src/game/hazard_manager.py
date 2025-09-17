@@ -16,7 +16,7 @@ from src.core.hazards import (
 )
 from src.core.data_structures import Vector2
 from src.core.events import (
-    UnitMoved, TurnStarted, LogMessage, EventType
+    UnitMoved, TurnStarted, LogMessage, EventType, GameEvent
 )
 
 if TYPE_CHECKING:
@@ -95,14 +95,16 @@ class HazardManager:
             source="HazardManager"
         )
         
-    def _on_unit_moved(self, event: UnitMoved) -> None:
+    def _on_unit_moved(self, event: GameEvent) -> None:
         """Handle unit moved event to trigger hazard effects."""
+        assert isinstance(event, UnitMoved), f"Expected UnitMoved, got {type(event)}"
         # Check for hazards at the destination position
         position = Vector2(event.to_position[0], event.to_position[1])  # Convert (y,x) to Vector2(y,x)
-        self.check_hazard_triggers(position)
+        self.check_hazard_triggers("unit_moved", position=position)
         
-    def _on_turn_started(self, event: TurnStarted) -> None:
+    def _on_turn_started(self, event: GameEvent) -> None:
         """Handle turn started event for hazard processing."""
+        assert isinstance(event, TurnStarted), f"Expected TurnStarted, got {type(event)}"
         # Process all active hazards for spreading, decay, etc.
         self.process_hazard_turn()
         
@@ -354,8 +356,8 @@ class HazardManager:
                     del self.position_hazards[pos]
         
         # Remove from timeline if scheduled
-        if instance.timeline_entry_id and hasattr(self.game_state, 'timeline'):
-            self.game_state.timeline.remove_entry(instance.timeline_entry_id)
+        if instance.timeline_entry_id and self.game_state.battle:
+            self.game_state.battle.timeline.remove_entry(instance.timeline_entry_id)
         
         # Log hazard removal
         hazard_name = instance.hazard.properties.hazard_type.name.title()
@@ -510,6 +512,7 @@ class HazardManager:
         return UnitMoved(
             turn=getattr(self.game_state, 'turn_count', 0),
             unit_name=unit.name,
+            unit_id=unit.unit_id,
             team=unit.team,
             from_position=(unit.position.y, unit.position.x),
             to_position=(new_position.y, new_position.x)
@@ -537,22 +540,26 @@ class HazardManager:
             instance = self.active_hazards[hazard_id]
             hazard = instance.hazard
             
-            # Process turn effects (decay, spreading, etc.)
-            if hasattr(hazard, 'process_turn_effects'):
-                hazard.process_turn_effects()
-                
-            # Check if hazard should spread this turn
-            if hasattr(hazard, 'should_spread_this_turn') and hazard.should_spread_this_turn():
-                spread_positions = hazard.get_spread_positions()
-                for pos in spread_positions:
-                    if self.game_map.is_valid_position(pos):
-                        # Create spread hazard
-                        self.create_hazard(
-                            hazard.properties.hazard_type,
-                            pos,
-                            max(1, hazard.properties.intensity - 1),  # Reduced intensity for spread
-                            hazard.source_unit
-                        )
+            # Process hazard effects using the tick method
+            current_time = self.game_state.battle.timeline.current_time if self.game_state.battle else 0
+            actions = hazard.tick(self.game_map, current_time)
+            
+            # Process each action returned by the hazard
+            for action in actions:
+                if action.action_type != "spread":
+                    continue
+                    
+                pos = action.position
+                if not self.game_map.is_valid_position(pos):
+                    continue
+                    
+                # Create spread hazard
+                self.create_hazard(
+                    hazard.properties.hazard_type,
+                    pos,
+                    max(1, hazard.intensity - 1),  # Reduced intensity for spread
+                    hazard.source_unit
+                )
             
             # Check if hazard has expired
             if hazard.is_expired():

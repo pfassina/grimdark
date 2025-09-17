@@ -40,7 +40,7 @@ class CombatResolver:
     def __init__(
         self, 
         game_map: "GameMap", 
-        event_manager: Optional["EventManager"] = None,
+        event_manager: "EventManager",
         morale_manager: Optional["MoraleManager"] = None
     ):
         self.game_map = game_map
@@ -48,13 +48,12 @@ class CombatResolver:
         self.morale_manager = morale_manager
         
         # Subscribe to UnitAttacked events for proper combat processing
-        if self.event_manager:
-            self.event_manager.subscribe(
-                EventType.UNIT_ATTACKED,
-                self._handle_unit_attacked,
-                subscriber_name="CombatResolver.unit_attacked"
-            )
-            self._emit_log("CombatResolver subscribed to UnitAttacked events", "COMBAT", "INFO")
+        self.event_manager.subscribe(
+            EventType.UNIT_ATTACKED,
+            self._handle_unit_attacked,
+            subscriber_name="CombatResolver.unit_attacked"
+        )
+        self._emit_log("CombatResolver subscribed to UnitAttacked events", "COMBAT", "INFO")
     
     def _handle_unit_attacked(self, event) -> None:
         """Handle UnitAttacked events by processing damage and checking for defeats."""
@@ -94,17 +93,16 @@ class CombatResolver:
 
     def _emit_log(self, message: str, category: str = "BATTLE", level: str = "INFO") -> None:
         """Emit a log message event."""
-        if self.event_manager:
-            self.event_manager.publish(
-                LogMessage(
-                    turn=0,  # TODO: Get actual turn from game state
-                    message=message,
-                    category=category,
-                    level=level,
-                    source="CombatResolver"
-                ),
+        self.event_manager.publish(
+            LogMessage(
+                turn=0,  # TODO: Get actual turn from game state
+                message=message,
+                category=category,
+                level=level,
                 source="CombatResolver"
-            )
+            ),
+            source="CombatResolver"
+        )
         
     def execute_aoe_attack(
         self, 
@@ -266,17 +264,16 @@ class CombatResolver:
                 self._emit_log(f"{target.name}: Defeated")
                 
                 # Emit unit defeated event
-                if self.event_manager:
-                    self.event_manager.publish(
-                        UnitDefeated(
-                            turn=0,  # TODO: Get actual turn
-                            unit_name=target.name,
-                            unit_id=target.unit_id,
-                            team=target.team,
-                            position=(target.position.x, target.position.y)
-                        ),
-                        source="CombatResolver"
-                    )
+                self.event_manager.publish(
+                    UnitDefeated(
+                        turn=0,  # TODO: Get actual turn
+                        unit_name=target.name,
+                        unit_id=target.unit_id,
+                        team=target.team,
+                        position=(target.position.x, target.position.y)
+                    ),
+                    source="CombatResolver"
+                )
             
             # Batch remove all defeated units in a single operation
             self.game_map.remove_units_batch(defeated_unit_ids)

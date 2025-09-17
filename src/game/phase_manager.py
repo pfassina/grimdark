@@ -8,7 +8,7 @@ assignments scattered throughout the codebase.
 """
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, List, Optional
 
 if TYPE_CHECKING:
     from ..core.event_manager import EventManager
@@ -26,17 +26,29 @@ from ..core.data_structures import VectorArray
 
 
 @dataclass
-class PhaseTransitionRule:
-    """Defines a phase transition rule."""
+class GamePhaseTransitionRule:
+    """Defines a game phase transition rule."""
 
-    from_phase: Union[GamePhase, BattlePhase]
+    from_phase: GamePhase
     event_type: EventType
-    to_phase: Union[GamePhase, BattlePhase]
+    to_phase: GamePhase
     description: str
 
-    def matches(
-        self, current_phase: Union[GamePhase, BattlePhase], event_type: EventType
-    ) -> bool:
+    def matches(self, current_phase: GamePhase, event_type: EventType) -> bool:
+        """Check if this rule matches the current conditions."""
+        return self.from_phase == current_phase and self.event_type == event_type
+
+
+@dataclass
+class BattlePhaseTransitionRule:
+    """Defines a battle phase transition rule."""
+
+    from_phase: BattlePhase
+    event_type: EventType
+    to_phase: BattlePhase
+    description: str
+
+    def matches(self, current_phase: BattlePhase, event_type: EventType) -> bool:
         """Check if this rule matches the current conditions."""
         return self.from_phase == current_phase and self.event_type == event_type
 
@@ -55,8 +67,8 @@ class PhaseManager:
         self.event_manager = event_manager
 
         # Transition rules
-        self.game_phase_rules: List[PhaseTransitionRule] = []
-        self.battle_phase_rules: List[PhaseTransitionRule] = []
+        self.game_phase_rules: List[GamePhaseTransitionRule] = []
+        self.battle_phase_rules: List[BattlePhaseTransitionRule] = []
 
         # Set up transition rules
         self._setup_game_phase_transitions()
@@ -83,13 +95,13 @@ class PhaseManager:
     def _setup_game_phase_transitions(self) -> None:
         """Define GamePhase transition rules."""
         self.game_phase_rules = [
-            PhaseTransitionRule(
+            GamePhaseTransitionRule(
                 from_phase=GamePhase.MAIN_MENU,
                 event_type=EventType.SCENARIO_LOADED,
                 to_phase=GamePhase.BATTLE,
                 description="Start battle when scenario is loaded from main menu",
             ),
-            PhaseTransitionRule(
+            GamePhaseTransitionRule(
                 from_phase=GamePhase.BATTLE,
                 event_type=EventType.GAME_ENDED,
                 to_phase=GamePhase.GAME_OVER,
@@ -101,105 +113,105 @@ class PhaseManager:
         """Define BattlePhase transition rules."""
         self.battle_phase_rules = [
             # Timeline processing flows
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.TIMELINE_PROCESSING,
                 event_type=EventType.UNIT_TURN_STARTED,
                 to_phase=BattlePhase.UNIT_MOVING,
                 description="Begin unit movement when their turn starts",
             ),
             # Unit movement flows
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_MOVING,
                 event_type=EventType.UNIT_MOVED,
                 to_phase=BattlePhase.UNIT_ACTION_SELECTION,
                 description="Allow action selection after unit movement",
             ),
             # Action selection flows
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_ACTION_SELECTION,
                 event_type=EventType.ACTION_SELECTED,
                 to_phase=BattlePhase.ACTION_TARGETING,
                 description="Begin targeting after action is selected",
             ),
             # Quick action flows (skip action selection menu)
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_SELECTION,
                 event_type=EventType.ACTION_SELECTED,
                 to_phase=BattlePhase.ACTION_TARGETING,
                 description="Quick attack from unit selection",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_MOVING,
                 event_type=EventType.ACTION_SELECTED,
                 to_phase=BattlePhase.ACTION_TARGETING,
                 description="Quick attack from movement phase",
             ),
             # Action execution flows
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.ACTION_TARGETING,
                 event_type=EventType.ACTION_EXECUTED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="Return to timeline processing after action execution",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.ACTION_EXECUTION,
                 event_type=EventType.ACTION_EXECUTED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="Return to timeline processing after action execution",
             ),
             # Quick wait flows (skip everything, go directly to timeline processing)
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_SELECTION,
                 event_type=EventType.ACTION_EXECUTED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="Quick wait from unit selection",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_MOVING,
                 event_type=EventType.ACTION_EXECUTED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="Quick wait from movement phase",
             ),
             # Turn completion flows
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_MOVING,
                 event_type=EventType.UNIT_TURN_ENDED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="End turn during movement phase",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_ACTION_SELECTION,
                 event_type=EventType.UNIT_TURN_ENDED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="End turn during action selection",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.ACTION_TARGETING,
                 event_type=EventType.UNIT_TURN_ENDED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="End turn during targeting phase",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.ACTION_EXECUTION,
                 event_type=EventType.UNIT_TURN_ENDED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="End turn during action execution",
             ),
             # Timeline continues processing
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.TIMELINE_PROCESSING,
                 event_type=EventType.TIMELINE_PROCESSED,
                 to_phase=BattlePhase.TIMELINE_PROCESSING,
                 description="Continue timeline processing after each processing cycle",
             ),
             # Cancel transition rules
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.ACTION_TARGETING,
                 event_type=EventType.ACTION_CANCELED,
                 to_phase=BattlePhase.UNIT_ACTION_SELECTION,
                 description="Cancel action targeting returns to action selection",
             ),
-            PhaseTransitionRule(
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_ACTION_SELECTION,
                 event_type=EventType.MOVEMENT_CANCELED,
                 to_phase=BattlePhase.UNIT_MOVING,
@@ -407,12 +419,12 @@ class PhaseManager:
             f"FORCED battle phase: {old_phase.name} -> {new_phase.name}{unit_info} ({reason})"
         )
 
-    def add_game_phase_rule(self, rule: PhaseTransitionRule) -> None:
+    def add_game_phase_rule(self, rule: GamePhaseTransitionRule) -> None:
         """Add a custom game phase transition rule."""
         self.game_phase_rules.append(rule)
         self._emit_log(f"Added game phase rule: {rule.description}")
 
-    def add_battle_phase_rule(self, rule: PhaseTransitionRule) -> None:
+    def add_battle_phase_rule(self, rule: BattlePhaseTransitionRule) -> None:
         """Add a custom battle phase transition rule."""
         self.battle_phase_rules.append(rule)
         self._emit_log(f"Added battle phase rule: {rule.description}")

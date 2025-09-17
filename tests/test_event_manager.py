@@ -5,6 +5,7 @@ Tests the event-driven communication system that enables decoupled
 manager interactions through the publisher-subscriber pattern.
 """
 
+import time
 from unittest.mock import Mock
 from src.core.event_manager import EventPriority, QueuedEvent
 from src.core.events import GameEvent, EventType, TurnStarted
@@ -47,7 +48,6 @@ class TestQueuedEvent:
 
     def test_queued_event_ordering_by_timestamp(self):
         """Test that events with same priority are ordered by timestamp."""
-        import time
         
         event1 = QueuedEvent(MockEvent(1), EventPriority.NORMAL)
         time.sleep(0.001)  # Small delay to ensure different timestamps

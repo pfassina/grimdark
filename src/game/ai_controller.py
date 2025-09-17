@@ -285,7 +285,7 @@ class BasicAI(AIController):
             enemy_actions_soon = 0
             for entry in preview:
                 if entry.entity_type == "unit":
-                    entry_unit = self.game_map.get_unit(entry.entity_id)
+                    entry_unit = game_map.get_unit(entry.entity_id)
                     assert entry_unit is not None, f"Timeline entry references non-existent unit: {entry.entity_id}"
                     if entry_unit.team != unit.team:
                         enemy_actions_soon += 1

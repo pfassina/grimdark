@@ -5,12 +5,12 @@ and integration with the combat system. It implements the grimdark principle
 that battles are as much about breaking the enemy's will as their bodies.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, cast
 
 from ..core.events import (
     MoraleChanged, UnitPanicked, UnitRouted, UnitRallied,
     UnitTookDamage, UnitDefeated, BattlePhaseChanged, LogMessage,
-    EventType
+    EventType, GameEvent
 )
 from ..core.data_structures import Vector2
 from .components import MoraleComponent, ActorComponent, MovementComponent
@@ -76,28 +76,35 @@ class MoraleManager:
             source="MoraleManager"
         )
         
-    def _on_unit_took_damage(self, event: UnitTookDamage) -> None:
+    def _on_unit_took_damage(self, event: GameEvent) -> None:
         """Handle unit took damage event for morale processing."""
+        assert isinstance(event, UnitTookDamage), f"Expected UnitTookDamage, got {type(event)}"
         # Find the unit that took damage
         for unit in self.game_map.units:
             actor = unit.entity.get_component("Actor")
-            if actor and actor.name == event.unit_name:
+            assert actor is not None, f"Unit {unit.unit_id} missing Actor component"
+            assert isinstance(actor, ActorComponent), f"Actor component for {unit.unit_id} is not ActorComponent"
+            if actor.name == event.unit_name:
                 # Process morale effects from damage
                 self.process_unit_damage(unit.entity, event.damage_amount)
                 break
     
-    def _on_unit_defeated(self, event: UnitDefeated) -> None:
+    def _on_unit_defeated(self, event: GameEvent) -> None:
         """Handle unit defeated event for morale processing."""
+        assert isinstance(event, UnitDefeated), f"Expected UnitDefeated, got {type(event)}"
         # Find the defeated unit
         for unit in self.game_map.units:
             actor = unit.entity.get_component("Actor")
-            if actor and actor.name == event.unit_name:
+            assert actor is not None, f"Unit {unit.unit_id} missing Actor component"
+            assert isinstance(actor, ActorComponent), f"Actor component for {unit.unit_id} is not ActorComponent"
+            if actor.name == event.unit_name:
                 # Process morale effects from death
                 self.process_unit_death(unit.entity)
                 break
     
-    def _on_battle_phase_changed(self, event: BattlePhaseChanged) -> None:
+    def _on_battle_phase_changed(self, event: GameEvent) -> None:
         """Handle battle phase change for morale processing."""
+        assert isinstance(event, BattlePhaseChanged), f"Expected BattlePhaseChanged, got {type(event)}"
         # Update all units' proximity modifiers when phase changes
         for unit in self.game_map.units:
             self._update_proximity_modifiers(unit.entity)
@@ -114,7 +121,6 @@ class MoraleManager:
         if not morale_component:
             return
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         
         # Calculate morale loss from damage
@@ -144,7 +150,6 @@ class MoraleManager:
         if not deceased_actor_component or not deceased_position:
             return
         
-        from typing import cast
         deceased_actor = cast(ActorComponent, deceased_actor_component)
             
         # Find all units within proximity radius
@@ -157,10 +162,9 @@ class MoraleManager:
             if not unit_actor or not unit_morale:
                 continue
                 
-            from typing import cast
-            actor = cast('ActorComponent', unit_actor)
+            actor = cast(ActorComponent, unit_actor)
             morale = cast(MoraleComponent, unit_morale)
-            
+                
             # Skip if this is the unit that died
             if unit == deceased:
                 continue
@@ -195,7 +199,6 @@ class MoraleManager:
         for unit in self.game_map.units:
             morale_component = unit.entity.get_component("Morale")
             if morale_component:
-                from typing import cast
                 morale = cast(MoraleComponent, morale_component)
                 morale.process_turn_effects()
                 
@@ -216,7 +219,6 @@ class MoraleManager:
         if not morale_component:
             return False
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         
         # Calculate rally bonus based on rallier
@@ -224,7 +226,6 @@ class MoraleManager:
         if rallier:
             rallier_actor = rallier.get_component("Actor")
             if rallier_actor:
-                from typing import cast
                 actor = cast('ActorComponent', rallier_actor)
                 # Leaders and priests get bonus to rallying
                 if actor.unit_class.name in ["PRIEST", "KNIGHT"]:
@@ -250,7 +251,6 @@ class MoraleManager:
         if not morale_component:
             return {}
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         return morale.get_combat_penalties()
     
@@ -267,7 +267,6 @@ class MoraleManager:
         if not morale_component:
             return False
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         return morale.should_flee_from_combat()
     
@@ -282,7 +281,6 @@ class MoraleManager:
         if not morale_component:
             return
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         
         # Heavy damage can trigger immediate panic regardless of current morale
@@ -305,7 +303,6 @@ class MoraleManager:
         if not morale_component:
             return
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         
         if not morale.is_panicked:
@@ -326,7 +323,6 @@ class MoraleManager:
         if not morale_component:
             return
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         
         if not morale.is_routed:
@@ -345,7 +341,6 @@ class MoraleManager:
         if not morale_component or not actor_component:
             return
             
-        from typing import cast
         morale = cast(MoraleComponent, morale_component)
         actor = cast('ActorComponent', actor_component)
         
@@ -366,7 +361,6 @@ class MoraleManager:
         for unit in nearby_units:
             unit_actor = unit.get_component("Actor")
             if unit_actor and unit != entity:
-                from typing import cast
                 unit_actor_cast = cast('ActorComponent', unit_actor)
                 if actor.is_ally_of(unit_actor_cast):
                     ally_count += 1
@@ -396,7 +390,6 @@ class MoraleManager:
         if not movement_component:
             return None
             
-        from typing import cast
         movement = cast('MovementComponent', movement_component)
         return movement.get_position()
     
@@ -432,7 +425,6 @@ class MoraleManager:
         position = self._get_entity_position(entity)
         
         if actor and position:
-            from typing import cast
             actor_cast = cast('ActorComponent', actor)
             event = MoraleChanged(
                 turn=self.current_turn,
@@ -456,7 +448,6 @@ class MoraleManager:
         position = self._get_entity_position(entity)
         
         if actor and position:
-            from typing import cast
             actor_cast = cast('ActorComponent', actor)
             event = UnitPanicked(
                 turn=self.current_turn,
@@ -481,7 +472,6 @@ class MoraleManager:
         position = self._get_entity_position(entity)
         
         if actor and position:
-            from typing import cast
             actor_cast = cast('ActorComponent', actor)
             event = UnitRouted(
                 turn=self.current_turn,
@@ -505,7 +495,6 @@ class MoraleManager:
         position = self._get_entity_position(entity)
         
         if actor and position:
-            from typing import cast
             actor_cast = cast('ActorComponent', actor)
             event = UnitRallied(
                 turn=self.current_turn,

@@ -9,6 +9,7 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 from ..core.data_structures import Vector2
+from ..core.events import BattlePhaseChanged, GameEvent
 
 if TYPE_CHECKING:
     from ..core.event_manager import EventManager
@@ -24,7 +25,6 @@ if TYPE_CHECKING:
     from .scenario import Scenario
 
 from ..core.events import (
-    BattlePhaseChanged,
     LogMessage,
     ManagerInitialized,
     UIStateChanged,
@@ -74,8 +74,9 @@ class UIManager:
             ManagerInitialized(turn=0, manager_name="UIManager"), source="UIManager"
         )
 
-    def _handle_battle_phase_changed(self, event: BattlePhaseChanged) -> None:
+    def _handle_battle_phase_changed(self, event: GameEvent) -> None:
         """Handle battle phase changes to automatically manage UI elements."""
+        assert isinstance(event, BattlePhaseChanged), f"Expected BattlePhaseChanged, got {type(event)}"
 
         # Debug logging
 
@@ -163,9 +164,8 @@ class UIManager:
         self.event_manager.publish(
             UIStateChanged(
                 turn=self.state.battle.current_turn if self.state.battle else 0,
-                component="dialog",
-                action="shown",
-                details={"type": "game_over", "result": result, "message": message},
+                state_type="dialog_opened",
+                new_value="game_over",
             ),
             source="UIManager",
         )
@@ -181,9 +181,8 @@ class UIManager:
         self.event_manager.publish(
             UIStateChanged(
                 turn=0,  # TODO: Get actual turn
-                component="banner",
-                action="shown",
-                details={"text": text, "duration_ms": duration_ms},
+                state_type="banner_shown",
+                new_value=text,
             ),
             source="UIManager",
         )
@@ -389,7 +388,7 @@ class UIManager:
     def build_expanded_log_overlay(self) -> OverlayRenderData:
         """Build expanded log overlay content from game state."""
         # Get log data from game state (populated by log manager through events)
-        log_data = getattr(self.state, "log_data", None)
+        log_data = self.state.state_data.get("log_data")
         if not log_data:
             return OverlayRenderData(
                 overlay_type="expanded_log",

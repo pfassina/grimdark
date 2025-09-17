@@ -7,6 +7,7 @@ their own timeline entries and can spread, damage units, and alter terrain.
 """
 
 from __future__ import annotations
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -221,7 +222,6 @@ class FireHazard(Hazard):
         
         # Try to spread
         if self.spread_count < self.properties.max_spread_count or self.properties.max_spread_count == -1:
-            import random
             if random.random() < self.properties.spread_chance:
                 spread_targets = self._get_spread_targets(game_map)
                 if spread_targets:
@@ -338,7 +338,6 @@ class PoisonCloudHazard(Hazard):
                 ))
         
         # Spread with wind
-        import random
         if random.random() < self.properties.spread_chance:
             # Wind-driven spread favors wind direction
             for pos in list(self.affected_positions):
@@ -520,7 +519,6 @@ class IceHazard(Hazard):
                 ))
                 
                 # Chance to make unit slip and move randomly
-                import random
                 if random.random() < 0.2:  # 20% slip chance
                     directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
                     dy, dx = random.choice(directions)
@@ -533,7 +531,6 @@ class IceHazard(Hazard):
                         ))
         
         # Slowly spread to water tiles
-        import random
         if random.random() < self.properties.spread_chance:
             for pos in list(self.affected_positions):
                 y, x = pos

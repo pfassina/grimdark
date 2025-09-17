@@ -60,12 +60,12 @@ class Scenario:
     # Event-driven objective system
     objective_manager: Optional["ObjectiveManager"] = field(default=None, init=False)
 
-    def initialize_objective_manager(self, game_view: "GameView", event_manager: Optional["EventManager"] = None) -> None:
+    def initialize_objective_manager(self, game_view: "GameView", event_manager: "EventManager") -> None:
         """Initialize the event-driven objective manager.
 
         Args:
             game_view: GameView adapter for objective queries
-            event_manager: Event manager for logging (optional)
+            event_manager: Event manager for event publishing and logging
         """
         from .objective_manager import ObjectiveManager
 

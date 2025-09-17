@@ -15,7 +15,7 @@ from src.core.events import (
 from src.core.game_enums import Team
 from src.core.game_state import GameState, GamePhase, BattlePhase
 from src.core.timeline import Timeline
-from src.game.phase_manager import PhaseManager, PhaseTransitionRule
+from src.game.phase_manager import PhaseManager, GamePhaseTransitionRule
 
 
 class TestPhaseTransitionRule:
@@ -23,7 +23,7 @@ class TestPhaseTransitionRule:
 
     def test_rule_creation(self):
         """Test basic rule creation."""
-        rule = PhaseTransitionRule(
+        rule = GamePhaseTransitionRule(
             from_phase=GamePhase.MAIN_MENU,
             event_type=EventType.SCENARIO_LOADED,
             to_phase=GamePhase.BATTLE,
@@ -37,7 +37,7 @@ class TestPhaseTransitionRule:
 
     def test_rule_matches(self):
         """Test rule matching logic."""
-        rule = PhaseTransitionRule(
+        rule = GamePhaseTransitionRule(
             from_phase=GamePhase.MAIN_MENU,
             event_type=EventType.SCENARIO_LOADED,
             to_phase=GamePhase.BATTLE,

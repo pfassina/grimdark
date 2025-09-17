@@ -10,15 +10,15 @@ Design Principles:
 - Efficient aggregation of victory/defeat states
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 from collections import defaultdict
 
-from ..core.events import GameEvent, EventType, ObjectiveContext
+from ..core.events import GameEvent, EventType, ObjectiveContext, UnitDefeated, LogMessage
 from ..core.game_view import GameView
-from ..core.game_enums import ObjectiveStatus
+from ..core.game_enums import ObjectiveStatus, Team
+from .objectives import Objective, DefeatAllEnemiesObjective
 
 if TYPE_CHECKING:
-    from .objectives import Objective
     from ..core.event_manager import EventManager
 
 
@@ -32,12 +32,12 @@ class ObjectiveManager:
     4. Manages objective lifecycle and status updates
     """
     
-    def __init__(self, game_view: GameView, event_manager: Optional["EventManager"] = None):
+    def __init__(self, game_view: GameView, event_manager: "EventManager"):
         """Initialize the objective manager.
         
         Args:
             game_view: GameView adapter for objective queries
-            event_manager: Event manager for logging (optional)
+            event_manager: Event manager for event publishing and logging
         """
         self.game_view = game_view
         self.event_manager = event_manager
@@ -49,18 +49,16 @@ class ObjectiveManager:
     
     def _emit_log(self, message: str, category: str = "OBJECTIVE", level: str = "DEBUG") -> None:
         """Emit a log message event."""
-        if self.event_manager:
-            from ..core.events import LogMessage
-            self.event_manager.publish(
-                LogMessage(
-                    turn=0,  # TODO: Get current turn from game state
-                    message=message,
-                    category=category,
-                    level=level,
-                    source="ObjectiveManager"
-                ),
+        self.event_manager.publish(
+            LogMessage(
+                turn=0,  # TODO: Get current turn from game state
+                message=message,
+                category=category,
+                level=level,
                 source="ObjectiveManager"
-            )
+            ),
+            source="ObjectiveManager"
+        )
     
     def register_objectives(self, 
                           victory_objectives: list["Objective"], 
@@ -91,25 +89,26 @@ class ObjectiveManager:
         Args:
             event: The game event to process
         """
-        from ..core.events import UnitDefeated
-        from ..core.game_enums import Team
         
         # Log enemy defeat events for debugging
         if isinstance(event, UnitDefeated) and event.team == Team.ENEMY:
             self._emit_log(f"Processing enemy defeat: {event.unit_name}", level="INFO")
         
         interested_objectives = self._event_subscribers.get(event.event_type, [])
-        
-        if interested_objectives:
-            context = ObjectiveContext(event=event, view=self.game_view)
+        if not interested_objectives:
+            return
             
-            for objective in interested_objectives:
-                objective.on_event(context)
+        context = ObjectiveContext(event=event, view=self.game_view)
+        
+        for objective in interested_objectives:
+            objective.on_event(context)
+            
+            # Log if victory was triggered
+            if objective.status.name != "COMPLETED":
+                continue
                 
-                # Log if victory was triggered
-                if hasattr(objective, 'status') and objective.status.name == "COMPLETED":
-                    if hasattr(objective, '_enemy_count'):
-                        self._emit_log(f"*** VICTORY TRIGGERED *** Enemy count: {objective._enemy_count}", level="INFO")
+            if isinstance(objective, DefeatAllEnemiesObjective):
+                self._emit_log(f"*** VICTORY TRIGGERED *** Enemy count: {objective._enemy_count}", level="INFO")
     
     def check_victory(self) -> bool:
         """Check if all victory objectives are completed.
@@ -173,8 +172,8 @@ class ObjectiveManager:
         situation when they are first registered.
         """
         for objective in self.victory_objectives + self.defeat_objectives:
-            if hasattr(objective, 'recompute'):
-                objective.recompute(self.game_view)
+            # All objectives should implement recompute if they need state synchronization
+            objective.recompute(self.game_view)
     
     def get_event_stats(self) -> dict[str, int]:
         """Get statistics about event subscriptions (for debugging).

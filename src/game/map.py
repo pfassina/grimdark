@@ -1,5 +1,6 @@
 import csv
 import os
+from collections import deque
 from collections.abc import KeysView
 from dataclasses import dataclass, field
 from typing import Optional
@@ -849,7 +850,6 @@ class GameMap:
         if start == end:
             return [start]
 
-        from collections import deque
 
         queue = deque([(start, 0, [start])])
         visited = {start: 0}

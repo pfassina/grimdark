@@ -7,6 +7,8 @@ that can be consumed by any renderer implementation.
 import time
 from typing import TYPE_CHECKING, Optional
 
+import numpy as np
+
 if TYPE_CHECKING:
     from .map import GameMap
     from .scenario_menu import ScenarioMenu
@@ -60,6 +62,12 @@ class RenderBuilder:
         """Update the UI manager reference."""
         self.ui_manager = ui_manager
     
+    def _ensure_game_map(self) -> "GameMap":
+        """Ensure game_map is initialized, raise error if not."""
+        if self.game_map is None:
+            raise RuntimeError("Game map not initialized. Render builder requires game map for battle rendering.")
+        return self.game_map
+    
     def build_render_context(self) -> RenderContext:
         """Build complete render context from current game state."""
         context = RenderContext()
@@ -84,8 +92,9 @@ class RenderBuilder:
         context.viewport_width = screen_width
         context.viewport_height = viewport_height
         
-        context.world_width = self.game_map.width
-        context.world_height = self.game_map.height
+        game_map = self._ensure_game_map()
+        context.world_width = game_map.width
+        context.world_height = game_map.height
         
         # Add game state information
         context.current_turn = self.state.battle.current_turn
@@ -185,13 +194,13 @@ class RenderBuilder:
         Creates all tile render data at once using numpy operations
         instead of nested loops for significant performance improvement.
         """
-        import numpy as np
         from ..core.game_enums import TerrainType
         
         # Get structured tile data from game map
-        terrain_types = self.game_map.tiles['terrain_type']
-        elevations = self.game_map.tiles['elevation']
-        height, width = self.game_map.height, self.game_map.width
+        game_map = self._ensure_game_map()
+        terrain_types = game_map.tiles['terrain_type']
+        elevations = game_map.tiles['elevation']
+        height, width = game_map.height, game_map.width
         
         # Create coordinate meshgrid
         y_coords, x_coords = np.mgrid[0:height, 0:width]
@@ -276,8 +285,9 @@ class RenderBuilder:
                 return "target"
             return None
         
+        game_map = self._ensure_game_map()
         context.units.extend(
-            DataConverter.units_to_render_data_list(self.game_map.units, highlight_units)
+            DataConverter.units_to_render_data_list(game_map.units, highlight_units)
         )
     
     def _is_in_viewport(self, position: Vector2) -> bool:
@@ -298,7 +308,7 @@ class RenderBuilder:
         hazard_manager = self.state.hazard_manager
         
         # Add render data for each active hazard
-        for hazard_id, instance in hazard_manager.active_hazards.items():
+        for _, instance in hazard_manager.active_hazards.items():
             hazard = instance.hazard
             
             # Create render data for each position the hazard affects
@@ -435,7 +445,8 @@ class RenderBuilder:
                     continue
         else:
             # Fallback to simple unit listing if timeline not available
-            for i, unit in enumerate(self.game_map.units):
+            game_map = self._ensure_game_map()
+            for i, unit in enumerate(game_map.units):
                 if unit and unit.is_alive and i < 8:  # Limit to 8 entries
                     timeline_entry = self._create_fallback_entry(unit, i)
                     timeline_entries.append(timeline_entry)
@@ -459,7 +470,8 @@ class RenderBuilder:
         
         if entry.entity_type == "unit":
             # Find the unit by its ID - this MUST exist if timeline is correct
-            unit = self.game_map.get_unit(entry.entity_id)
+            game_map = self._ensure_game_map()
+            unit = game_map.get_unit(entry.entity_id)
             if not unit:
                 raise ValueError(f"Timeline entry references non-existent unit ID: {entry.entity_id}")
             
@@ -532,14 +544,16 @@ class RenderBuilder:
         # Get currently selected unit for display
         selected_unit = None
         if hasattr(self.state.battle, 'selected_unit_id') and self.state.battle.selected_unit_id:
-            for unit in self.game_map.units:
+            game_map = self._ensure_game_map()
+            for unit in game_map.units:
                 if unit and unit.is_alive and unit.name == self.state.battle.selected_unit_id:
                     selected_unit = unit
                     break
         
         # If no selected unit, try to get unit at cursor position
         if not selected_unit:
-            for unit in self.game_map.units:
+            game_map = self._ensure_game_map()
+            for unit in game_map.units:
                 if unit and unit.is_alive and unit.position == self.state.cursor.position:
                     selected_unit = unit
                     break
@@ -602,10 +616,11 @@ class RenderBuilder:
         else:
             # Show tile information when no unit is selected
             cursor_pos = self.state.cursor.position
-            if not self.game_map.is_valid_position(cursor_pos):
+            game_map = self._ensure_game_map()
+            if not game_map.is_valid_position(cursor_pos):
                 # Don't show panel for out of bounds positions
                 return
-            tile = self.game_map.get_tile(cursor_pos)
+            tile = game_map.get_tile(cursor_pos)
             
             # Get terrain information
             terrain_name = tile.terrain_type.name.replace('_', ' ').title() if hasattr(tile.terrain_type, 'name') else str(tile.terrain_type)
@@ -616,7 +631,7 @@ class RenderBuilder:
                 from ..core.tileset_loader import get_tileset_config
                 tileset = get_tileset_config()
                 if hasattr(tile.terrain_type, 'name'):
-                    terrain_props = tileset.get('terrain_properties', {}).get(tile.terrain_type.name.lower(), {})
+                    terrain_props = tileset.get_terrain_gameplay_info(tile.terrain_type.name.lower())
                     if terrain_props:
                         move_cost = terrain_props.get('move_cost', 1)
                         defense_bonus = terrain_props.get('defense_bonus', 0)

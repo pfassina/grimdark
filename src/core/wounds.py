@@ -7,6 +7,7 @@ battles and can become permanent scars that never heal.
 """
 
 from __future__ import annotations
+import random
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -184,7 +185,6 @@ class Wound(ABC):
         """Make the wound worse (infection, reopening, etc)"""
         self.healing_progress = max(0, self.healing_progress - 20)
         if not self.is_infected and self.properties.ongoing_effect.infection_chance > 0:
-            import random
             if random.random() < self.properties.ongoing_effect.infection_chance:
                 self.is_infected = True
 
@@ -280,7 +280,6 @@ class SlashWound(Wound):
         
         # Check for scarring
         if self.healing_progress >= self.properties.base_healing_time and not self.is_scarred:
-            import random
             if random.random() < self.properties.scar_chance:
                 self.is_scarred = True
                 events.append(WoundEvent("scarred", self))
@@ -377,8 +376,7 @@ class BrokenBone(Wound):
             self.healing_progress += 1
             if self.healing_progress >= self.properties.base_healing_time:
                 if not self.is_scarred:
-                    import random
-                    # Improper healing chance
+                            # Improper healing chance
                     if random.random() < self.properties.scar_chance:
                         self.is_scarred = True
                         events.append(WoundEvent("scarred", self, 
@@ -396,7 +394,6 @@ class BrokenBone(Wound):
             return False
             
         # Quality determines if bone sets properly
-        import random
         success_chance = treatment_quality / 100.0
         if random.random() < success_chance:
             self.is_set_properly = True
@@ -482,7 +479,6 @@ class Burn(Wound):
             # Check for scarring (very likely with burns)
             if self.healing_progress >= self.properties.base_healing_time // 2:
                 if not self.is_scarred:
-                    import random
                     if random.random() < self.properties.scar_chance:
                         self.is_scarred = True
                         events.append(WoundEvent("scarred", self,
@@ -614,7 +610,6 @@ def create_wound_from_damage(damage: int, damage_type: str,
     Returns:
         Wound instance or None if no wound inflicted
     """
-    import random
     
     # Determine if wound is inflicted based on damage
     wound_chance = min(0.8, damage / 30.0)  # Max 80% chance

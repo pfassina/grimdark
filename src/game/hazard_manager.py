@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from src.core.game_state import GameState
     from src.core.events import GameEvent
     from src.game.map import GameMap
+    from ..core.event_manager import EventManager
 
 
 @dataclass

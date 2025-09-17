@@ -21,6 +21,7 @@ from .scenario_structures import (
 if TYPE_CHECKING:
     from ..core.game_view import GameView
     from .objective_manager import ObjectiveManager
+    from ..core.event_manager import EventManager
 
 
 @dataclass

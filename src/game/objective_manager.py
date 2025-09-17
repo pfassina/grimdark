@@ -19,6 +19,7 @@ from ..core.game_enums import ObjectiveStatus
 
 if TYPE_CHECKING:
     from .objectives import Objective
+    from ..core.event_manager import EventManager
 
 
 class ObjectiveManager:

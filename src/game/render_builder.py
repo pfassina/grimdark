@@ -290,10 +290,11 @@ class RenderBuilder:
         """Add hazard data to the render context."""
         from ..core.renderable import HazardRenderData
         
-        # Check if hazard manager exists
-        if not hasattr(self.state, 'hazard_manager'):
+        # TODO: Enable hazard rendering when hazard system is complete
+        # The hazard manager is WIP - skip hazard rendering until fully implemented
+        if not hasattr(self.state, 'hazard_manager') or self.state.hazard_manager is None:
             return
-            
+        
         hazard_manager = self.state.hazard_manager
         
         # Add render data for each active hazard
@@ -602,7 +603,8 @@ class RenderBuilder:
             # Show tile information when no unit is selected
             cursor_pos = self.state.cursor.position
             if not self.game_map.is_valid_position(cursor_pos):
-                return InfoPanel(title="Out of Bounds", content="")
+                # Don't show panel for out of bounds positions
+                return
             tile = self.game_map.get_tile(cursor_pos)
             
             # Get terrain information

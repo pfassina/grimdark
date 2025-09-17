@@ -255,12 +255,14 @@ class Game:
                 event_manager=self.event_manager,
             )
 
-        # Hazard Manager
-        self.hazard_manager = HazardManager(
-            game_state=self.state,
-            game_map=game_map,
-            event_manager=self.event_manager,
-        )
+        # TODO: Initialize Hazard Manager when hazard system is complete
+        # The hazard system is WIP - not initializing until fully implemented
+        # self.hazard_manager = HazardManager(
+        #     game_state=self.state,
+        #     game_map=game_map,
+        #     event_manager=self.event_manager,
+        # )
+        # self.state.hazard_manager = self.hazard_manager
 
     def _setup_manager_callbacks(self) -> None:
         """Wire up callbacks between managers and main game."""

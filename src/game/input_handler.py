@@ -67,6 +67,10 @@ class InputHandler:
         self.ui_manager = ui_manager
         self.scenario_menu = scenario_menu
         self.timeline_manager = timeline_manager
+        
+        # Initialize log manager for error logging
+        from .log_manager import LogManager
+        self.log_manager = LogManager(event_manager, game_state)
 
         # Initialize modular components
         self.context_manager = InputContextManager(game_state)

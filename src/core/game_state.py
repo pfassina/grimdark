@@ -98,6 +98,7 @@ class UIState:
     action_menu_selection: int = 0
 
     active_overlay: Optional[str] = None  # "objectives", "help", "minimap", "expanded_log"
+    overlay_data: Optional[dict[str, Any]] = None  # Data for the active overlay
     active_dialog: Optional[str] = None  # "confirm_end_turn", etc.
     dialog_selection: int = 0  # For dialog option selection
     active_forecast: bool = False  # Battle forecast during targeting
@@ -145,8 +146,14 @@ class UIState:
     def open_overlay(self, overlay_type: str) -> None:
         self.active_overlay = overlay_type
 
+    def show_overlay(self, overlay_type: str, data: Optional[dict[str, Any]] = None) -> None:
+        """Show overlay with optional data."""
+        self.active_overlay = overlay_type
+        self.overlay_data = data
+
     def close_overlay(self) -> None:
         self.active_overlay = None
+        self.overlay_data = None
 
     def is_overlay_open(self) -> bool:
         return self.active_overlay is not None
@@ -273,15 +280,10 @@ class BattleState:
     def is_in_attack_range(self, position: Vector2) -> bool:
         return self.attack_range.contains(position)
 
-    def start_player_turn(self) -> None:
-        """Legacy method for backward compatibility."""
-        self.phase = BattlePhase.PLAYER_TURN_START
+    def start_new_turn(self) -> None:
+        """Start a new turn in timeline-based system."""
+        self.phase = BattlePhase.TIMELINE_PROCESSING
         self.current_turn += 1
-        self.reset_selection()
-
-    def start_enemy_turn(self) -> None:
-        """Legacy method for backward compatibility."""
-        self.phase = BattlePhase.ENEMY_TURN
         self.reset_selection()
     
     # Timeline-based methods
@@ -386,6 +388,10 @@ class GameState:
     cursor: CursorState = field(default_factory=CursorState)
 
     state_data: dict[str, Any] = field(default_factory=dict)
+    
+    # Manager references (optional, set by Game class)
+    hazard_manager: Optional[Any] = None  # HazardManager instance (avoid circular import)
+    current_time_ms: int = 0  # Current time in milliseconds for animations
 
     # ------------------------------------------------------------------
     # Convenience methods operating across substates
@@ -400,11 +406,9 @@ class GameState:
         self.ui.close_dialog()
         self.ui.stop_forecast()
 
-    def start_player_turn(self) -> None:
-        self.battle.start_player_turn()
-
-    def start_enemy_turn(self) -> None:
-        self.battle.start_enemy_turn()
+    def start_new_turn(self) -> None:
+        """Start a new turn using timeline-based system."""
+        self.battle.start_new_turn()
 
     def move_cursor(self, dx: int, dy: int, max_x: int, max_y: int) -> None:
         self.cursor.move(dx, dy, max_x, max_y)

@@ -261,8 +261,8 @@ class HiddenIntentManager:
         unit: "Unit",
         fake_action: "Action",
         real_action: "Action",
-        fake_target: Optional[object] = None,
-        real_target: Optional[object] = None,
+        fake_target: Optional[Vector2] = None,
+        real_target: Optional[Vector2] = None,
     ) -> IntentInfo:
         """Create a deceptive intent that shows false information.
 

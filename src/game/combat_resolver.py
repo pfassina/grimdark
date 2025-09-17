@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from .morale_manager import MoraleManager
     from ..core.event_manager import EventManager
 
-from ..core.events import UnitDefeated, DamageApplied, LogMessage
+from ..core.events import UnitDefeated, LogMessage
 from ..core.game_enums import Team
 
 
@@ -84,9 +84,10 @@ class CombatResolver:
         # Apply damage using vectorized processing (this will calculate proper damage)
         self._apply_damage_to_targets(attacker, result)
         
-        self._emit_log(f"Damage applied successfully", "COMBAT", "INFO")
+        self._emit_log("Damage applied successfully", "COMBAT", "INFO")
 
         # Log the attack
+        final_damage = int(event.base_damage * event.damage_multiplier)
         self._emit_log(
             f"{event.attacker_name} → {event.target_name} ({final_damage} damage, {event.attack_type})"
         )

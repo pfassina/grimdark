@@ -103,6 +103,18 @@ class Unit:
         """Set current hit points directly."""
         self._health.hp_current = max(0, value)
     
+    @property  
+    def mana_current(self) -> int:
+        """Get current mana points (placeholder for future magic system)."""
+        # For now, return 0 since mana system isn't implemented yet
+        return 0
+    
+    @property
+    def mana_max(self) -> int:
+        """Get maximum mana points (placeholder for future magic system)."""
+        # For now, return 0 since mana system isn't implemented yet
+        return 0
+    
     @property
     def has_moved(self) -> bool:
         """Check if unit has moved this turn."""

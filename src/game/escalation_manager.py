@@ -10,13 +10,14 @@ from enum import Enum, auto
 
 from ..core.data_structures import Vector2
 from ..core.events import (
-    TurnStarted, UnitDefeated, LogMessage, EventType
+    LogMessage, EventType
 )
 
 if TYPE_CHECKING:
     from ..core.components import Entity
     from ..core.game_state import GameState
     from ..core.event_manager import EventManager
+    from ..core.events import GameEvent
     from .scenario import Scenario
     from .map import GameMap
 
@@ -138,8 +139,11 @@ class EscalationManager:
             source="EscalationManager"
         )
         
-    def _on_turn_started(self, event: TurnStarted) -> None:
+    def _on_turn_started(self, event: "GameEvent") -> None:
         """Handle turn started event for escalation processing."""
+        from ..core.events import TurnStarted
+        assert isinstance(event, TurnStarted), f"Expected TurnStarted event, got {type(event).__name__}"
+            
         # Extract turn number from game state (since TurnStarted doesn't include turn number)
         # We'll process escalation for the current game state turn
         current_turn = getattr(self.game_state, 'turn', 0)
@@ -148,8 +152,11 @@ class EscalationManager:
         
         self.process_turn_start(current_turn)
         
-    def _on_unit_defeated(self, event: UnitDefeated) -> None:
+    def _on_unit_defeated(self, event: "GameEvent") -> None:
         """Handle unit defeated event for casualty tracking."""
+        from ..core.events import UnitDefeated
+        assert isinstance(event, UnitDefeated), f"Expected UnitDefeated event, got {type(event).__name__}"
+            
         # Determine if this was an enemy unit based on team
         is_enemy = event.team != getattr(self.game_state, 'player_team', None)
         

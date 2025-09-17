@@ -17,7 +17,7 @@ if TYPE_CHECKING:
 from .battle_calculator import BattleCalculator
 from .combat_resolver import CombatResolver, CombatResult
 from ..core.events import (
-    AttackTargetingSetup, AttackResolved, ManagerInitialized, ActionExecuted, CursorMoved
+    AttackTargetingSetup, AttackResolved, ManagerInitialized, ActionExecuted
 )
 
 

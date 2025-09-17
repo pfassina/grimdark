@@ -781,6 +781,14 @@ class WoundComponent(Component):
         """
         self.active_wounds.append(wound)
     
+    def get_active_wounds(self) -> list["Wound"]:
+        """Get all currently active wounds.
+        
+        Returns:
+            List of active wounds
+        """
+        return self.active_wounds.copy()
+    
     def remove_wound(self, wound: "Wound") -> bool:
         """Remove a wound (when it heals).
         

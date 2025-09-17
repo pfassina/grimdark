@@ -82,7 +82,6 @@ class DefeatAllEnemiesObjective(Objective):
         from ..core.events import UnitDefeated, UnitSpawned
         from ..core.game_enums import Team
 
-        old_count = self._enemy_count
         if isinstance(context.event, UnitSpawned):
             if context.event.team == Team.ENEMY:
                 self._enemy_count += 1

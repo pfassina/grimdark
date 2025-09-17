@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any
 from ..actions import ActionResult
 from ..game_state import BattlePhase
 from ..data_structures import VectorArray
-from ..events import ActionSelected, ActionExecuted
+from ..events import ActionSelected
 
 if TYPE_CHECKING:
     from ...game.input_handler import InputHandler
@@ -233,6 +233,7 @@ class DirectAttackCommand(Command):
         if handler.state.battle.current_team != 0 or not handler.state.battle.selected_unit_id:
             return False
 
+        assert handler.game_map is not None, "Game map must be loaded before executing combat commands"
         unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
         if not unit or not unit.can_act or not handler.combat_manager:
             return False
@@ -283,6 +284,7 @@ class WaitUnitCommand(Command):
         if not handler.state.battle.selected_unit_id:
             return False
 
+        assert handler.game_map is not None, "Game map must be loaded before executing combat commands"
         unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
         if not unit:
             return False

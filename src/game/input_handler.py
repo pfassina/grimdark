@@ -20,10 +20,10 @@ if TYPE_CHECKING:
     from .unit import Unit
     from .combat_manager import CombatManager
     from .timeline_manager import TimelineManager
+    from .ui_manager import UIManager
 
 from ..core.actions import ActionResult
 from ..core.data_structures import Vector2, VectorArray
-from .components import WoundComponent
 from ..core.event_manager import EventPriority
 from ..core.events import (
     ActionCanceled,
@@ -113,6 +113,12 @@ class InputHandler:
         if self.timeline_manager is None:
             raise RuntimeError("Timeline manager not initialized. Input handler requires timeline manager for battle operations.")
         return self.timeline_manager
+    
+    def _ensure_ui_manager(self) -> "UIManager":
+        """Ensure ui_manager is initialized, raise error if not."""
+        if self.ui_manager is None:
+            raise RuntimeError("UI manager not initialized. Input handler requires UI manager for UI operations.")
+        return self.ui_manager
 
     def _emit_log(
         self, message: str, category: str = "INPUT", level: str = "INFO"
@@ -162,8 +168,8 @@ class InputHandler:
         if context in [InputContext.OVERLAY, InputContext.FORECAST]:
             # For overlays/forecast, any unmapped key closes them
             self.action_registry.execute_action("close_overlay", self, context)
-        elif context == InputContext.EXPANDED_LOG:
-            # For expanded log, only mapped keys should work - ignore unmapped keys
+        elif context in [InputContext.EXPANDED_LOG, InputContext.INSPECTION]:
+            # For expanded log and inspection, only mapped keys should work - ignore unmapped keys
             pass
         else:
             # For other contexts, check if we should fall back to old system
@@ -197,7 +203,7 @@ class InputHandler:
         """Handle TAB key cycling for different phases."""
         if self.state.battle.phase == BattlePhase.UNIT_ACTION_SELECTION:
             self._cycle_timeline_front_units()
-        elif self.state.battle.phase == BattlePhase.ACTION_EXECUTION and self.combat_manager:
+        elif self.state.battle.phase == BattlePhase.ACTION_TARGETING and self.combat_manager:
             self.combat_manager.cycle_targetable_enemies()
 
     def action_end_turn(self) -> None:
@@ -420,6 +426,21 @@ class InputHandler:
             self.state.ui.close_dialog()
             return
         
+        # Handle confirm_wait
+        if dialog_type == "confirm_wait":
+            if selection == 0:  # Yes - proceed with wait
+                timeline_manager = self._ensure_timeline_manager()
+                result = timeline_manager.execute_unit_action("Wait")
+                
+                if result == ActionResult.SUCCESS:
+                    self._emit_log(
+                        "Unit waits and will act again later", category="TIMELINE"
+                    )
+                else:
+                    self._emit_log(f"Wait action failed: {result}", level="WARNING")
+            self.state.ui.close_dialog()
+            return
+        
         # Handle confirm_save_log
         if dialog_type == "confirm_save_log":
             if selection == 0:  # Yes - save log
@@ -466,8 +487,19 @@ class InputHandler:
         self.state.ui.close_action_menu()
 
         if action == "Wait":
-            # Simple wait action - timeline manager is always present
-
+            # Check if unit has only moved and needs confirmation
+            unit_id = self.state.battle.selected_unit_id
+            assert unit_id is not None, "Wait action called but no unit is selected"
+            game_map = self._ensure_game_map()
+            current_unit = game_map.get_unit(unit_id)
+            assert current_unit is not None, f"Unit {unit_id} not found on map"
+            
+            if not current_unit.status.has_acted:
+                # Unit hasn't performed any action, show confirmation dialog
+                self.state.ui.open_dialog("confirm_wait")
+                return
+            
+            # Execute wait action directly
             timeline_manager = self._ensure_timeline_manager()
             result = timeline_manager.execute_unit_action("Wait")
 
@@ -720,25 +752,18 @@ class InputHandler:
             return
 
         # Unit has moved - return to original position
-        current_position = unit.position
         game_map = self._ensure_game_map()
         game_map.move_unit(unit.unit_id, original_position)
         self.state.cursor.set_position(original_position)
 
-        # Emit unit moved event for the return movement
-        self.event_manager.publish(
-            UnitMoved(
-                turn=self.state.battle.current_turn,
-                unit_name=unit.name,
-                unit_id=unit.unit_id,
-                team=unit.team,
-                from_position=(current_position.y, current_position.x),
-                to_position=(original_position.y, original_position.x),
-            ),
-            source="InputHandler",
-        )
+        # Reset the unit's movement status since we're canceling the move
+        unit.status.has_moved = False
+
+        # DO NOT emit UnitMoved event - this would trigger phase transition!
+        # We want to stay in UNIT_MOVING phase
+        
         self._emit_log(
-            f"{unit.name} returned to original position", category="MOVEMENT"
+            f"{unit.name} returned to original position, can continue moving", category="MOVEMENT"
         )
 
         # Recalculate movement range for continued movement
@@ -770,59 +795,19 @@ class InputHandler:
         self.action_menu_cancel()
 
     def _handle_inspect_confirm(self, position: Vector2) -> bool:
-        """Handle Enter key in inspect mode - show detailed tile and unit info."""
-        if not self.ui_manager:
-            return False
-
-        # Get tile information
+        """Handle Enter key in inspect mode - delegate to UI manager for panel display."""
+        # Let UI manager handle building and showing the inspection panel
+        # UI manager has access to game_map and game_state for data gathering
+        ui_manager = self._ensure_ui_manager()
+        ui_manager.show_inspection_at_position(position)
+        
+        # Log the inspection action
         game_map = self._ensure_game_map()
-        if game_map.is_valid_position(position):
-            tile = game_map.get_tile(position)
-            unit = game_map.get_unit_at(position)
-
-            # Build inspection info
-            info_lines = []
-            info_lines.append("=== Tile Information ===")
-            info_lines.append(f"Position: ({position.x}, {position.y})")
-
-            if tile:
-                info_lines.append(f"Terrain: {tile.terrain_type.name}")
-                info_lines.append(f"Move Cost: {tile.move_cost}")
-                info_lines.append(f"Defense Bonus: +{tile.defense_bonus}")
-                # Tile doesn't have description, show terrain name instead
-                info_lines.append(f"Type: {tile.name}")
-            else:
-                info_lines.append("Terrain: Unknown")
-
-            # Add unit information if present
-            if unit:
-                info_lines.append("")
-                info_lines.append("=== Unit Information ===")
-                info_lines.append(f"Name: {unit.name}")
-                info_lines.append(f"Class: {unit.actor.unit_class.name}")
-                info_lines.append(f"Team: {unit.team.name}")
-                info_lines.append(f"HP: {unit.hp_current}/{unit.health.hp_max}")
-                info_lines.append(f"Strength: {unit.combat.strength}")
-                info_lines.append(f"Movement: {unit.movement.movement_points}")
-                info_lines.append(f"Speed: {unit.status.speed}")
-                info_lines.append(f"Can Move: {unit.can_move}")
-                info_lines.append(f"Can Act: {unit.can_act}")
-
-                wound_comp = unit.entity.get_component("Wound")
-                if wound_comp:
-                    assert isinstance(wound_comp, WoundComponent), f"Expected WoundComponent, got {type(wound_comp)}"
-                    if wound_comp.active_wounds:
-                        info_lines.append(f"Wounds: {len(wound_comp.active_wounds)}")
-                        for i, wound in enumerate(wound_comp.active_wounds):
-                            info_lines.append(f"  {i + 1}. {wound}")
-
-            # Show inspection panel through UI manager
-            self.ui_manager.show_inspection_panel("\n".join(info_lines))
-
-            if unit:
-                self._emit_log(f"Inspecting {unit.name} at {position}", category="UI")
-            else:
-                self._emit_log(f"Inspecting tile at {position}", category="UI")
+        unit = game_map.get_unit_at(position)
+        if unit:
+            self._emit_log(f"Inspecting {unit.name} at {position}", category="UI")
+        else:
+            self._emit_log(f"Inspecting tile at {position}", category="UI")
 
         return True
 

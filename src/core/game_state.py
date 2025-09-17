@@ -104,6 +104,8 @@ class UIState:
     active_forecast: bool = False  # Battle forecast during targeting
     expanded_log: bool = False  # Expanded log view state
     expanded_log_scroll: int = 0  # Scroll position in expanded log (0 = bottom/latest)
+    inspection_mode: bool = False  # Inspection panel view state
+    inspection_position: Optional[Vector2] = None  # Position being inspected
 
     def open_menu(self, menu_name: str) -> None:
         self.active_menu = menu_name

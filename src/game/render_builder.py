@@ -229,11 +229,19 @@ class RenderBuilder:
             )
     
     def _add_movement_overlays(self, context: RenderContext) -> None:
-        """Add movement range overlay tiles."""
+        """Add movement range overlay tiles with terrain preservation."""
+        game_map = self._ensure_game_map()
         for pos in self.state.battle.movement_range:
+            # Get underlying terrain information
+            tile = game_map.get_tile(pos)
+            
             context.overlays.append(
                 OverlayTileRenderData(
-                    position=pos, overlay_type="movement", opacity=0.5
+                    position=pos, 
+                    overlay_type="movement", 
+                    opacity=0.5,
+                    underlying_terrain=tile.terrain_type,
+                    terrain_elevation=tile.elevation
                 )
             )
     
@@ -408,6 +416,8 @@ class RenderBuilder:
                 context.overlay = self.ui_manager.build_minimap_overlay()
             elif self.state.ui.active_overlay == "expanded_log":
                 context.overlay = self.ui_manager.build_expanded_log_overlay()
+            elif self.state.ui.active_overlay == "inspection":
+                context.overlay = self.ui_manager.build_inspection_overlay()
         
         # Add dialog if active
         if self.state.ui.is_dialog_open() and self.state.ui.active_dialog is not None:

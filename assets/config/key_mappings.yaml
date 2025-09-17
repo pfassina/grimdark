@@ -47,6 +47,14 @@ contexts:
       UP: "scroll_up"          # UP key to scroll up (older messages)
       DOWN: "scroll_down"      # DOWN key to scroll down (newer messages)
 
+  inspection:
+    name: "Inspection panel"
+    description: "Detailed tile and unit information panel"
+    mappings:
+      ENTER: "close_inspection"
+      X: "close_inspection"
+      ESCAPE: "close_inspection"
+
   dialog:
     name: "Confirmation dialog"
     description: "Yes/No confirmation dialogs"

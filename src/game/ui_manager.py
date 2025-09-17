@@ -195,10 +195,199 @@ class UIManager:
             if elapsed_ms >= duration:
                 self.active_banner = None
 
-    def show_inspection_panel(self, content: str) -> None:
-        """Display an inspection panel with detailed tile/unit information."""
-        overlay_data = {"title": "Inspection", "content": content, "type": "inspection"}
+    def show_inspection_at_position(self, position: Vector2) -> None:
+        """Build and display inspection panel for a given map position."""
+        # Save current overlays before showing inspection panel
+        self.state.ui.inspection_mode = True
+        self.state.ui.inspection_position = position
+        
+        # Build comprehensive inspection information
+        info_lines = self._build_inspection_content(position)
+        
+        # Show the inspection overlay with the built content
+        overlay_data = {
+            "title": "Inspection", 
+            "content": "\n".join(info_lines), 
+            "type": "inspection",
+            "position": position
+        }
         self.state.ui.show_overlay("inspection", overlay_data)
+    
+    def _build_two_column_inspection_layout(self, position: Vector2, overlay_width: int) -> list[str]:
+        """Build two-column layout for inspection content."""
+        if not position:
+            return ["No position data available"]
+        
+        # Get data
+        tile = self.game_map.get_tile(position)
+        unit = self.game_map.get_unit_at(position)
+        
+        # Calculate column widths (roughly 50/50 split)
+        left_width = (overlay_width - 6) // 2  # -6 for borders and separator
+        right_width = overlay_width - 6 - left_width
+        
+        # Build left column (terrain info)
+        left_content = self._build_terrain_column(tile, position, left_width)
+        
+        # Build right column (unit info)
+        right_content = self._build_unit_column(unit, right_width) if unit else []
+        
+        # Combine columns side by side
+        max_lines = max(len(left_content), len(right_content))
+        combined_lines = []
+        
+        for i in range(max_lines):
+            left_line = left_content[i] if i < len(left_content) else ""
+            right_line = right_content[i] if i < len(right_content) else ""
+            
+            # Pad left column to exact width
+            left_padded = left_line.ljust(left_width)
+            
+            # Combine with separator
+            combined_line = f"{left_padded} │ {right_line}"
+            combined_lines.append(combined_line)
+        
+        return combined_lines
+    
+    def _build_terrain_column(self, tile, position: Vector2, width: int) -> list[str]:
+        """Build terrain information column."""
+        lines = []
+        lines.append("═══ TERRAIN INFO ═══".ljust(width))
+        lines.append(f"Position: ({position.x}, {position.y})".ljust(width))
+        lines.append(f"Terrain: {tile.terrain_type.name}".ljust(width))
+        lines.append(f"Move Cost: {tile.move_cost}".ljust(width))
+        lines.append(f"Defense Bonus: +{tile.defense_bonus}".ljust(width))
+        lines.append(f"Type: {tile.name}".ljust(width))
+        lines.append("".ljust(width))  # Spacing
+        
+        # Add more terrain details if available
+        if hasattr(tile, 'elevation'):
+            lines.append(f"Elevation: {tile.elevation}".ljust(width))
+        
+        return lines
+    
+    def _build_unit_column(self, unit, width: int) -> list[str]:
+        """Build unit information column."""
+        lines = []
+        lines.append("═══ UNIT INFO ═══".ljust(width))
+        lines.append(f"Name: {unit.name}".ljust(width))
+        lines.append(f"Class: {unit.actor.unit_class.name}".ljust(width))
+        lines.append(f"Team: {unit.team.name}".ljust(width))
+        lines.append(f"HP: {unit.hp_current}/{unit.health.hp_max}".ljust(width))
+        lines.append(f"Str/Mov/Spd: {unit.combat.strength}/{unit.movement.movement_points}/{unit.status.speed}".ljust(width))
+        lines.append(f"Status: {'Can Move' if unit.can_move else 'No Move'}, {'Can Act' if unit.can_act else 'No Act'}".ljust(width))
+        lines.append("".ljust(width))  # Spacing
+        
+        # Timeline info (compact)
+        timeline_info = self._get_unit_timeline_info(unit)
+        if timeline_info:
+            lines.append("─── Timeline ───".ljust(width))
+            # Only show the most important timeline info
+            for info_line in timeline_info[:2]:  # Limit to 2 most important lines
+                lines.append(info_line.ljust(width))
+            lines.append("".ljust(width))
+        
+        # Available actions for player units (compact)
+        if unit.team.value == 0:  # Player team
+            lines.append("─── Actions ───".ljust(width))
+            from ..core.actions import get_available_actions
+            available_actions = get_available_actions(unit)
+            # Show actions in a more compact format
+            action_names = [action.name for action in available_actions[:2]]  # First 2 only
+            action_names.append("Wait")
+            lines.append(", ".join(action_names).ljust(width))
+            lines.append("".ljust(width))
+        
+        # Wounds (if any)
+        from .components import WoundComponent
+        wound_comp = unit.entity.get_component("Wound")
+        if isinstance(wound_comp, WoundComponent) and wound_comp.active_wounds:
+            lines.append(f"─── Wounds ({len(wound_comp.active_wounds)}) ───".ljust(width))
+            # Show first wound only
+            wound_line = f"1. {str(wound_comp.active_wounds[0])[:width-3]}"
+            lines.append(wound_line.ljust(width))
+            if len(wound_comp.active_wounds) > 1:
+                lines.append(f"... and {len(wound_comp.active_wounds)-1} more".ljust(width))
+        
+        return lines
+    
+    def _build_inspection_content(self, position: Vector2) -> list[str]:
+        """Build detailed inspection content for a position."""
+        info_lines = []
+        
+        # Tile information
+        tile = self.game_map.get_tile(position)
+        info_lines.append("=== Tile Information ===")
+        info_lines.append(f"Position: ({position.x}, {position.y})")
+        info_lines.append(f"Terrain: {tile.terrain_type.name}")
+        info_lines.append(f"Move Cost: {tile.move_cost}")
+        info_lines.append(f"Defense Bonus: +{tile.defense_bonus}")
+        info_lines.append(f"Type: {tile.name}")
+        
+        # Unit information if present
+        unit = self.game_map.get_unit_at(position)
+        if unit:
+            info_lines.append("")
+            info_lines.append("=== Unit Information ===")
+            info_lines.append(f"Name: {unit.name}")
+            info_lines.append(f"Class: {unit.actor.unit_class.name}")
+            info_lines.append(f"Team: {unit.team.name}")
+            info_lines.append(f"HP: {unit.hp_current}/{unit.health.hp_max}")
+            info_lines.append(f"Strength: {unit.combat.strength}")
+            info_lines.append(f"Movement: {unit.movement.movement_points}")
+            info_lines.append(f"Speed: {unit.status.speed}")
+            info_lines.append(f"Can Move: {unit.can_move}")
+            info_lines.append(f"Can Act: {unit.can_act}")
+            
+            # Timeline position
+            timeline_info = self._get_unit_timeline_info(unit)
+            if timeline_info:
+                info_lines.append("")
+                info_lines.append("=== Timeline ===")
+                info_lines.extend(timeline_info)
+            
+            # Available actions for player units
+            if unit.team.value == 0:  # Player team
+                info_lines.append("")
+                info_lines.append("=== Available Actions ===")
+                from ..core.actions import get_available_actions
+                available_actions = get_available_actions(unit)
+                for action in available_actions:
+                    info_lines.append(f"  • {action.name} (Weight: {action.weight})")
+                info_lines.append("  • Wait (Weight: 50)")
+            
+            # Wounds
+            from .components import WoundComponent
+            wound_comp = unit.entity.get_component("Wound")
+            if isinstance(wound_comp, WoundComponent) and wound_comp.active_wounds:
+                info_lines.append("")
+                info_lines.append(f"=== Wounds ({len(wound_comp.active_wounds)}) ===")
+                for i, wound in enumerate(wound_comp.active_wounds, 1):
+                    info_lines.append(f"  {i}. {wound}")
+        
+        return info_lines
+    
+    def _get_unit_timeline_info(self, unit) -> list[str]:
+        """Get timeline information for a unit."""
+        if not hasattr(self.state.battle, 'timeline') or not self.state.battle.timeline:
+            return []
+        
+        timeline = self.state.battle.timeline
+        info = []
+        
+        # Find unit in timeline
+        for idx, entry in enumerate(timeline.get_preview(20)):
+            if entry.entity_type == "unit" and entry.entity_id == unit.unit_id:
+                info.append(f"Queue Position: #{idx + 1}")
+                ticks = entry.execution_time - timeline.current_time
+                if ticks <= 0:
+                    info.append("Status: Acting Now!")
+                else:
+                    info.append(f"Next Turn In: {ticks} ticks")
+                info.append(f"Next Action: {entry.action_description or 'Unknown'}")
+                return info
+        
+        return ["Queue Position: Not scheduled"]
 
     # UI builders for render context
     def build_objectives_overlay(self) -> OverlayRenderData:
@@ -254,6 +443,41 @@ class UIManager:
             content=content,
         )
 
+    def build_inspection_overlay(self) -> OverlayRenderData:
+        """Build fullscreen inspection overlay with two-column layout."""
+        if not self.state.ui.overlay_data:
+            return OverlayRenderData(
+                overlay_type="inspection",
+                width=60,
+                height=15,
+                title="Inspection",
+                content=["No inspection data available"],
+            )
+        
+        data = self.state.ui.overlay_data
+        position = data["position"]  # This must exist and be Vector2 if we got here
+        
+        # Get screen dimensions for fullscreen overlay
+        screen_width, screen_height = self.renderer.get_screen_size()
+        overlay_width = min(screen_width - 4, 120)  # Leave some margin
+        overlay_height = min(screen_height - 4, 30)  # Leave some margin
+        
+        # Build two-column layout
+        content_lines = self._build_two_column_inspection_layout(position, overlay_width)
+        
+        # Add controls at bottom
+        content_lines.append("")
+        content_lines.append("" + "═" * (overlay_width - 4))  # Separator line
+        content_lines.append("Controls: [Enter] Close [X] Cancel")
+        
+        return OverlayRenderData(
+            overlay_type="inspection",
+            width=overlay_width,
+            height=overlay_height,
+            title="Detailed Inspection",
+            content=content_lines,
+        )
+    
     def build_help_overlay(self) -> OverlayRenderData:
         """Build comprehensive help overlay with key bindings."""
         content = [
@@ -609,6 +833,17 @@ class UIManager:
                 height=6,
                 title="Save Log",
                 message="Save message log to file?",
+                options=["Yes", "No"],
+                selected_option=self.state.ui.get_dialog_selection(),
+            )
+        elif dialog_type == "confirm_wait":
+            return DialogRenderData(
+                x=20,
+                y=10,
+                width=45,
+                height=6,
+                title="Confirm Wait",
+                message="Unit can still act. Wait and end turn?",
                 options=["Yes", "No"],
                 selected_option=self.state.ui.get_dialog_selection(),
             )

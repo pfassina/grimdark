@@ -1,7 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from .game_enums import LayerType
+from .game_enums import LayerType, TerrainType
 from .data_structures import Vector2
 
 
@@ -110,6 +110,8 @@ class CursorRenderData:
 class OverlayTileRenderData:
     position: Vector2
     overlay_type: str           # "movement", "interrupt_arc", "aoe_preview", "charge_path"
+    underlying_terrain: TerrainType  # Terrain type beneath overlay
+    terrain_elevation: int           # Elevation of underlying terrain
     opacity: float = 0.5
     
     # Enhanced tactical overlay support

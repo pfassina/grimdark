@@ -15,6 +15,7 @@ class InputContext(Enum):
     """Input context defines which keys are active and what they do."""
     BATTLEFIELD = "battlefield"
     EXPANDED_LOG = "expanded_log"
+    INSPECTION = "inspection"
     DIALOG = "dialog"
     MENU = "menu"
     ACTION_MENU = "action_menu"
@@ -46,6 +47,8 @@ class InputContextManager:
             return InputContext.DIALOG
         elif self.state.ui.is_expanded_log_open():
             return InputContext.EXPANDED_LOG
+        elif self.state.ui.inspection_mode:
+            return InputContext.INSPECTION
         elif self.state.ui.is_forecast_active():
             return InputContext.FORECAST
         elif self.state.ui.is_action_menu_open():

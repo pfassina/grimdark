@@ -817,9 +817,17 @@ class TerminalRenderer(Renderer):
                         colors[screen_y][screen_x] = color
                     
             elif isinstance(item, OverlayTileRenderData):
-                symbol = self.ui_symbols.get(f"{item.overlay_type}_overlay", "?")
-                grid[screen_y][screen_x] = symbol
-                colors[screen_y][screen_x] = self.ui_colors.get(item.overlay_type, "")
+                if item.overlay_type == "movement":
+                    # For movement overlays, preserve underlying terrain symbol
+                    terrain_symbol = self.terrain_symbols[item.underlying_terrain.name.lower()]
+                    grid[screen_y][screen_x] = terrain_symbol
+                    # Apply movement overlay background color
+                    colors[screen_y][screen_x] = self.ui_colors.get(item.overlay_type, "")
+                else:
+                    # For other overlays, use the overlay symbol
+                    symbol = self.ui_symbols.get(f"{item.overlay_type}_overlay", "?")
+                    grid[screen_y][screen_x] = symbol
+                    colors[screen_y][screen_x] = self.ui_colors.get(item.overlay_type, "")
             
             elif hasattr(item, 'target_type'):  # AttackTargetRenderData
                 # Store original color before modifying
@@ -1318,23 +1326,28 @@ class TerminalRenderer(Renderer):
                             colors[screen_y][screen_x] = color
             
             elif isinstance(item, OverlayTileRenderData):
-                # Enhanced overlay rendering with new tactical overlays
-                symbol = item.symbol_override or self.ui_symbols.get(f"{item.overlay_type}_overlay", "?")
-                
-                # Special symbols for new overlay types
-                if item.overlay_type == "charge_path" and item.direction:
-                    if item.direction == "north":
-                        symbol = "↑"
-                    elif item.direction == "south":
-                        symbol = "↓"
-                    elif item.direction == "east":
-                        symbol = "→"
-                    elif item.direction == "west":
-                        symbol = "←"
-                elif item.overlay_type == "interrupt_arc":
-                    symbol = "◊"  # Diamond for interrupt zones
-                elif item.overlay_type == "aoe_preview":
-                    symbol = "◯"  # Circle for AoE preview
+                # Enhanced overlay rendering with terrain preservation for movement
+                if item.overlay_type == "movement":
+                    # For movement overlays, preserve underlying terrain symbol
+                    symbol = self.terrain_symbols[item.underlying_terrain.name.lower()]
+                else:
+                    # For other overlays, use the overlay symbol
+                    symbol = item.symbol_override or self.ui_symbols.get(f"{item.overlay_type}_overlay", "?")
+                    
+                    # Special symbols for new overlay types
+                    if item.overlay_type == "charge_path" and item.direction:
+                        if item.direction == "north":
+                            symbol = "↑"
+                        elif item.direction == "south":
+                            symbol = "↓"
+                        elif item.direction == "east":
+                            symbol = "→"
+                        elif item.direction == "west":
+                            symbol = "←"
+                    elif item.overlay_type == "interrupt_arc":
+                        symbol = "◊"  # Diamond for interrupt zones
+                    elif item.overlay_type == "aoe_preview":
+                        symbol = "◯"  # Circle for AoE preview
                 
                 if screen_y < len(grid) and screen_x < len(grid[0]):
                     grid[screen_y][screen_x] = symbol

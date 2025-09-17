@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from ..actions import ActionResult
 from ..game_state import BattlePhase
-from ..data_structures import VectorArray
+from ..data_structures import VectorArray, Vector2
 from ..events import ActionSelected
 
 if TYPE_CHECKING:
@@ -68,8 +68,16 @@ class MoveCursorCommand(Command):
             return False
         
         old_pos = handler.state.cursor.position
+        
+        # Get target position (handles constraints and wrap-around)
+        target_pos = self._get_target_position(handler, old_pos, self.dx, self.dy)
+        if target_pos == old_pos:
+            return True  # Don't move
+        
+        # Calculate delta to target position and move cursor
+        final_delta = target_pos - old_pos
         handler.state.cursor.move(
-            self.dx, self.dy, 
+            final_delta.x, final_delta.y, 
             handler.game_map.width, 
             handler.game_map.height
         )
@@ -102,6 +110,64 @@ class MoveCursorCommand(Command):
             handler.on_movement_preview_update()
         
         return True
+    
+    def _get_target_position(self, handler: "InputHandler", old_pos: Vector2, dx: int, dy: int) -> Vector2:
+        """Get the target position for cursor movement, handling constraints and wrap-around."""
+        intended_pos = old_pos + Vector2(dy, dx)  # Vector2(y, x) format
+        
+        # Check if we're in a constrained phase
+        current_phase = handler.state.battle.phase
+        
+        # During movement phase, constrain to movement range
+        if current_phase == BattlePhase.UNIT_MOVING:
+            if handler.state.battle.is_in_movement_range(intended_pos):
+                return intended_pos  # Normal movement within range
+            # Find wrap-around target in movement range
+            return self._find_closest_valid_tile(handler.state.battle.movement_range, old_pos, dx, dy)
+        
+        # During attack targeting, constrain to attack range
+        elif current_phase == BattlePhase.ACTION_TARGETING:
+            if handler.state.battle.attack_range.contains(intended_pos):
+                return intended_pos  # Normal movement within range
+            # Find wrap-around target in attack range
+            return self._find_closest_valid_tile(handler.state.battle.attack_range, old_pos, dx, dy)
+        
+        # No constraints for other phases - return intended position
+        return intended_pos
+    
+    def _find_closest_valid_tile(self, valid_tiles: VectorArray, current_pos: Vector2, dx: int, dy: int) -> Vector2:
+        """Find the closest valid tile in the direction of movement."""
+        if len(valid_tiles) == 0:
+            return current_pos  # No valid tiles, stay put
+        
+        candidates = []
+        for i in range(len(valid_tiles)):
+            tile = valid_tiles[i]
+            if tile == current_pos:
+                continue  # Skip current position
+            
+            delta = tile - current_pos
+            # Check if tile is in the direction we're moving
+            if dx < 0 and delta.x < 0:  # LEFT - tile is to the left
+                candidates.append(tile)
+            elif dx > 0 and delta.x > 0:  # RIGHT - tile is to the right
+                candidates.append(tile)
+            elif dy < 0 and delta.y < 0:  # UP - tile is above
+                candidates.append(tile)
+            elif dy > 0 and delta.y > 0:  # DOWN - tile is below
+                candidates.append(tile)
+        
+        if not candidates:
+            return current_pos  # No valid tiles in that direction
+        
+        # Return closest candidate with North/West priority for ties
+        def distance_with_priority(tile: Vector2) -> tuple[float, int, int]:
+            delta = tile - current_pos
+            distance_squared = delta.y * delta.y + delta.x * delta.x  # Avoid sqrt for efficiency
+            # Tie-breaker: North over South (lower y), West over East (lower x)
+            return (distance_squared, tile.y, tile.x)
+        
+        return min(candidates, key=distance_with_priority)
 
 
 class ConfirmSelectionCommand(Command):
@@ -280,16 +346,20 @@ class WaitUnitCommand(Command):
     
     def execute(self, handler: "InputHandler") -> bool:
         """Make the selected unit wait."""
-        # Check if a unit is selected
-        if not handler.state.battle.selected_unit_id:
-            return False
-
-        assert handler.game_map is not None, "Game map must be loaded before executing combat commands"
-        unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
-        if not unit:
-            return False
+        unit_id = handler.state.battle.selected_unit_id
+        assert unit_id is not None, "Wait command called but no unit is selected"
         
-        # Execute wait action through timeline system (timeline manager is always present)
+        assert handler.game_map is not None, "Game map must be loaded before executing combat commands"
+        unit = handler.game_map.get_unit(unit_id)
+        assert unit is not None, f"Unit {unit_id} not found on map"
+        
+        # Check if unit hasn't acted and needs confirmation
+        if not unit.status.has_acted:
+            # Unit hasn't performed any action, show confirmation dialog
+            handler.state.ui.open_dialog("confirm_wait")
+            return True
+        
+        # Execute wait action directly
         if not handler.timeline_manager:
             raise RuntimeError("Timeline manager is required but not present")
         result = handler.timeline_manager.execute_unit_action("Wait")
@@ -327,5 +397,27 @@ class StartInspectModeCommand(Command):
             
             if handler.log_manager:
                 handler.log_manager.ui("Inspect mode active - use arrow keys to explore, V to exit")
+        
+        return True
+
+
+class CloseInspectionCommand(Command):
+    """Command for closing the inspection panel."""
+    
+    def execute(self, handler: "InputHandler") -> bool:
+        """Close inspection panel and restore previous overlays."""
+        # Close the inspection panel
+        handler.state.ui.inspection_mode = False
+        handler.state.ui.inspection_position = None
+        if handler.state.ui.active_overlay == "inspection":
+            handler.state.ui.active_overlay = None
+            handler.state.ui.overlay_data = None
+        
+        # Note: We don't restore movement_range here because the inspect mode (V key)
+        # already cleared it when entering INSPECT phase. The movement overlays should
+        # be restored when exiting inspect mode (V key again), not when closing this panel.
+        
+        if handler.log_manager:
+            handler.log_manager.ui("Inspection panel closed")
         
         return True

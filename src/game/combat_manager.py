@@ -118,6 +118,31 @@ class CombatManager:
         else:
             self.state.battle.aoe_tiles = VectorArray()
     
+    def _update_aoe_tiles_only(self) -> None:
+        """Update AOE tiles based on cursor position without refreshing targetable enemies."""
+        if not self.state.battle.attack_range:
+            return
+
+        cursor_pos = self.state.cursor.position
+
+        # Check if cursor is over a valid attack target
+        if cursor_pos in self.state.battle.attack_range:
+            self.state.battle.selected_target = cursor_pos
+        else:
+            self.state.battle.selected_target = None
+
+        # Calculate AOE tiles for any position in attack range (including empty tiles)
+        if cursor_pos in self.state.battle.attack_range and self.state.battle.selected_unit_id:
+            unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
+            if unit is None:
+                raise ValueError(f"Selected unit '{self.state.battle.selected_unit_id}' not found on map. UI state inconsistent with game state.")
+            aoe_pattern = unit.combat.aoe_pattern
+            self.state.battle.aoe_tiles = self.game_map.calculate_aoe_tiles(
+                cursor_pos, aoe_pattern
+            )
+        else:
+            self.state.battle.aoe_tiles = VectorArray()
+    
     def execute_attack_at_cursor(self) -> bool:
         """
         Execute AOE attack centered on cursor position.
@@ -262,6 +287,8 @@ class CombatManager:
             target_unit = self.game_map.get_unit(next_target_id)
             if target_unit:
                 self.state.cursor.set_position(target_unit.position)
+                # Update AOE tiles for the new cursor position without refreshing enemy list
+                self._update_aoe_tiles_only()
                 return True
         
         return False

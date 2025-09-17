@@ -13,7 +13,7 @@ from .commands import (
     Command, ActionCommand, MoveCursorCommand, ConfirmSelectionCommand,
     CancelActionCommand, ShowOverlayCommand, CloseOverlayCommand,
     QuitGameCommand, DirectAttackCommand, WaitUnitCommand,
-    StartInspectModeCommand
+    StartInspectModeCommand, CloseInspectionCommand
 )
 from .context_manager import InputContext
 
@@ -170,6 +170,7 @@ class ActionRegistry:
         self.register_command("direct_attack", DirectAttackCommand())
         self.register_command("wait_unit", WaitUnitCommand())
         self.register_command("start_inspect_mode", StartInspectModeCommand())
+        self.register_command("close_inspection", CloseInspectionCommand())
         
         # Unit cycling - delegate to handler method
         self.register_action_method("cycle_units")

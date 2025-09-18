@@ -75,14 +75,6 @@ class Scenario:
             defeat_objectives=self.defeat_objectives,
         )
 
-    def on_event(self, event) -> None:
-        """Forward game events to the objective manager.
-
-        Args:
-            event: GameEvent to forward to objectives
-        """
-        if self.objective_manager:
-            self.objective_manager.on_event(event)
 
     def check_victory(self) -> bool:
         """Check if all victory objectives are completed.

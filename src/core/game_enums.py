@@ -40,12 +40,10 @@ class TerrainType(Enum):
 class ObjectiveType(Enum):
     """Types of objectives for scenarios."""
     DEFEAT_ALL_ENEMIES = auto()
-    SURVIVE_TURNS = auto()
     REACH_POSITION = auto()
     DEFEAT_UNIT = auto()
     PROTECT_UNIT = auto()
     POSITION_CAPTURED = auto()
-    TURN_LIMIT = auto()
     ALL_UNITS_DEFEATED = auto()
 
 

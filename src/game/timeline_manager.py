@@ -18,7 +18,6 @@ from ..core.events import (
     ActionExecuted,
     LogMessage,
     ManagerInitialized,
-    ObjectivesCheckRequested,
     PlayerActionRequested,
     TimelineProcessed,
     TurnEnded,
@@ -109,10 +108,13 @@ class TimelineManager:
                 )
 
     def _handle_battle_phase_changed(self, event) -> None:
-        """Handle battle phase changes to restore movement range when needed."""
+        """Handle battle phase changes - restore movement range and process timeline."""
         from ..core.events import BattlePhaseChanged
 
         if isinstance(event, BattlePhaseChanged):
+            # Timeline processing is handled by Game.py during the update loop
+            # when battle phase is TIMELINE_PROCESSING
+            
             # When transitioning to UNIT_MOVING or UNIT_ACTION_SELECTION phase (e.g., after canceling),
             # restore the original movement range that was calculated when turn started
             if (event.new_phase in ["UNIT_MOVING", "UNIT_ACTION_SELECTION"] and 
@@ -317,12 +319,9 @@ class TimelineManager:
         """Handle the start of a player unit's turn."""
         self._emit_log(f"{unit.name}: Turn started")
 
-        # Move cursor to the unit and select it
-        self.state.cursor.set_position(unit.position)
-        self.state.battle.selected_unit_id = unit.unit_id
-        self.state.battle.current_acting_unit_id = (
-            unit.unit_id
-        )  # CRITICAL: Set acting unit ID
+        # Selection and cursor positioning is handled by SelectionManager via UnitTurnStarted event
+        # Just set the acting unit ID here
+        self.state.battle.current_acting_unit_id = unit.unit_id
 
         # DEFENSIVE: Validate synchronization and attempt recovery if needed
         self._validate_timeline_unit_synchronization(unit)
@@ -492,11 +491,9 @@ class TimelineManager:
 
             # Execute Wait action directly and return immediately
             result = self._execute_wait_action(unit)
-
-            # CRITICAL: Clear unit selection and acting unit after Wait
-            self.state.battle.selected_unit_id = None
+            
+            # Clear current acting unit (timeline state)
             self.state.battle.current_acting_unit_id = None
-            self.state.ui.close_action_menu()
 
             return result
 
@@ -572,10 +569,10 @@ class TimelineManager:
 
         # Clear the pending action and return to timeline processing
         self.state.battle.clear_pending_action()
+        
+        # Clear current acting unit (timeline state)
+        self.state.battle.current_acting_unit_id = None
 
-        # Clear unit selection to end the turn properly
-        self.state.battle.selected_unit_id = None
-        self.state.ui.close_action_menu()
 
         # Emit action executed event - PhaseManager will transition to TIMELINE_PROCESSING
         self.event_manager.publish(
@@ -590,14 +587,7 @@ class TimelineManager:
             source="TimelineManager",
         )
 
-        # Check objectives after action (emit event for objective system)
-        self.event_manager.publish(
-            ObjectivesCheckRequested(
-                turn=self.timeline.current_time,
-                trigger_reason="unit_action_completed"
-            ),
-            source="TimelineManager"
-        )
+        # Objectives automatically updated via ObjectiveManager subscriptions to domain events
 
         return result
 
@@ -709,15 +699,11 @@ class TimelineManager:
 
             # Clear action state and return to timeline processing
             self.state.battle.clear_pending_action()
+            
+            # Clear current acting unit (timeline state)
+            self.state.battle.current_acting_unit_id = None
 
-            # Check objectives after skip action (emit event for objective system)
-            self.event_manager.publish(
-                ObjectivesCheckRequested(
-                    turn=self.timeline.current_time,
-                    trigger_reason="unit_skip_action"
-                ),
-                source="TimelineManager"
-            )
+            # Objectives automatically updated via ObjectiveManager subscriptions to domain events
 
     def _process_hazard_entry(self, entry: TimelineEntry) -> bool:
         """Process a hazard timeline entry.

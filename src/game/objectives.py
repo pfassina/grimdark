@@ -109,31 +109,6 @@ class DefeatAllEnemiesObjective(Objective):
         return self.status
 
 
-class SurviveTurnsObjective(Objective):
-    """Victory condition: survive for a certain number of turns."""
-
-    def __init__(self, turns: int, description: Optional[str] = None):
-        desc = description or f"Survive for {turns} turns"
-        super().__init__(ObjectiveType.SURVIVE_TURNS, desc)
-        self.turns_required = turns
-
-    @property
-    def interests(self) -> tuple[EventType, ...]:
-        """Subscribe to turn end events to track turn count."""
-        return (EventType.TURN_ENDED,)
-
-    def on_event(self, context: ObjectiveContext) -> None:
-        """Check if required turns have been reached."""
-        if context.event.turn >= self.turns_required:
-            self.status = ObjectiveStatus.COMPLETED
-        else:
-            self.status = ObjectiveStatus.IN_PROGRESS
-
-    def recompute(self, view: "GameView") -> ObjectiveStatus:  # noqa: ARG002
-        """Check current turn against requirement (needs turn from context)."""
-        # Note: recompute needs current turn, but GameView doesn't provide it
-        # This objective relies on event-driven updates for turn tracking
-        return self.status
 
 
 class ReachPositionObjective(Objective):
@@ -300,30 +275,6 @@ class PositionCapturedObjective(Objective):
         return self.status
 
 
-class TurnLimitObjective(Objective):
-    """Defeat condition: exceed turn limit."""
-
-    def __init__(self, turns: int, description: Optional[str] = None):
-        desc = description or f"Complete objectives within {turns} turns"
-        super().__init__(ObjectiveType.TURN_LIMIT, desc)
-        self.max_turns = turns
-
-    @property
-    def interests(self) -> tuple[EventType, ...]:
-        """Subscribe to turn end events to check turn limit."""
-        return (EventType.TURN_ENDED,)
-
-    def on_event(self, context: ObjectiveContext) -> None:
-        """Check if turn limit has been exceeded."""
-        if context.event.turn > self.max_turns:
-            self.status = ObjectiveStatus.FAILED
-        else:
-            self.status = ObjectiveStatus.IN_PROGRESS
-
-    def recompute(self, view: "GameView") -> ObjectiveStatus:  # noqa: ARG002
-        """Cannot determine current turn from GameView alone."""
-        # This objective relies on event-driven updates for turn tracking
-        return self.status
 
 
 class AllUnitsDefeatedObjective(Objective):

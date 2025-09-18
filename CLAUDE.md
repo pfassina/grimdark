@@ -163,6 +163,8 @@ The system uses an **event-driven architecture** with timeline-based combat flow
    - `interrupt_system.py` - Prepared actions and reaction system **(WIP)**
    - `input_handler.py` - User input processing and action routing
    - `ui_manager.py` - Overlays, dialogs, banners, and modal UI state
+   - `scenario_manager.py` - Scenario loading, map creation, and game state initialization
+   - `selection_manager.py` - Cursor positioning and unit selection state management
    - `render_builder.py` - Render context construction from game state
    - `map.py` - Grid-based battlefield with vectorized operations, pathfinding, CSV map loading
    - `unit.py` - Component-based units with Vector2 positioning
@@ -178,11 +180,20 @@ The system uses an **event-driven architecture** with timeline-based combat flow
 
 ### Manager System Design
 
-The `Game` class acts as a **coordinator** that:
+The `Game` class acts as a **lean coordinator** that:
 1. **Initializes** all manager systems with EventManager and GameState dependencies
 2. **Coordinates** communication between managers through EventManager
 3. **Orchestrates** the main game loop and high-level state management
-4. **Delegates** all specific concerns to appropriate managers
+4. **Delegates** all specific concerns to specialized managers
+
+### Core Manager Responsibilities
+
+- **ScenarioManager**: Scenario loading, map creation, unit placement, and objective system initialization
+- **SelectionManager**: Cursor positioning, unit selection state, and selection validation
+- **TimelineManager**: Timeline processing, unit activation, turn flow, and AI coordination
+- **CombatManager**: Combat targeting, validation, UI integration, and action execution
+- **UIManager**: Modal overlays, dialogs, banners, and UI state management
+- **InputHandler**: User input processing, action routing, and input context management
 
 ### Manager Communication Flow
 ```

@@ -9,7 +9,7 @@ import time
 from typing import TYPE_CHECKING, Optional
 
 from ..core.data_structures import Vector2
-from ..core.events import BattlePhaseChanged, GameEvent
+from ..core.events import BattlePhaseChanged, GameEvent, GamePhaseChanged
 
 if TYPE_CHECKING:
     from ..core.event_manager import EventManager
@@ -28,6 +28,7 @@ from ..core.events import (
     LogMessage,
     ManagerInitialized,
     UIStateChanged,
+    UnitTurnEnded,
 )
 from ..core.renderable import (
     BannerRenderData,
@@ -67,6 +68,16 @@ class UIManager:
             EventType.BATTLE_PHASE_CHANGED,
             self._handle_battle_phase_changed,
             subscriber_name="UIManager.battle_phase_changed",
+        )
+        self.event_manager.subscribe(
+            EventType.GAME_PHASE_CHANGED,
+            self._handle_game_phase_changed,
+            subscriber_name="UIManager.game_phase_changed",
+        )
+        self.event_manager.subscribe(
+            EventType.UNIT_TURN_ENDED,
+            self._handle_unit_turn_ended,
+            subscriber_name="UIManager.unit_turn_ended",
         )
 
         # Emit initialization event
@@ -109,6 +120,26 @@ class UIManager:
             # Close action menu when leaving action selection phase
             if self.state.ui.is_action_menu_open():
                 self.state.ui.close_action_menu()
+
+    def _handle_game_phase_changed(self, event: GameEvent) -> None:
+        """Handle game phase changes to show Game Over dialog when appropriate."""
+        assert isinstance(event, GamePhaseChanged), f"Expected GamePhaseChanged, got {type(event)}"
+        
+        # Early return if not transitioning to GAME_OVER
+        if event.new_phase != "GAME_OVER":
+            return
+            
+        # Show Game Over dialog immediately
+        game_result = self.state.state_data.get("game_result", "unknown")
+        game_over_message = self.state.state_data.get("game_over_message", "Game Over")
+        self.show_game_over_dialog(game_result, game_over_message)
+
+    def _handle_unit_turn_ended(self, event: GameEvent) -> None:
+        """Handle unit turn ended to close action menu."""
+        assert isinstance(event, UnitTurnEnded), f"Expected UnitTurnEnded, got {type(event)}"
+        
+        # Close action menu when unit turn ends
+        self.state.ui.close_action_menu()
 
     def _emit_log(
         self, message: str, category: str = "UI", level: str = "DEBUG"

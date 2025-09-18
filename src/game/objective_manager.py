@@ -13,7 +13,7 @@ Design Principles:
 from typing import TYPE_CHECKING
 from collections import defaultdict
 
-from ..core.events import GameEvent, EventType, ObjectiveContext, UnitDefeated, LogMessage
+from ..core.events import GameEvent, EventType, ObjectiveContext, UnitDefeated, LogMessage, GameEnded
 from ..core.game_view import GameView
 from ..core.game_enums import ObjectiveStatus, Team
 from .objectives import Objective, DefeatAllEnemiesObjective
@@ -46,6 +46,8 @@ class ObjectiveManager:
         
         # Event routing optimization: map event types to interested objectives
         self._event_subscribers: dict[EventType, list["Objective"]] = defaultdict(list)
+        
+        # ObjectiveManager now auto-subscribes to events that objectives care about
     
     def _emit_log(self, message: str, category: str = "OBJECTIVE", level: str = "DEBUG") -> None:
         """Emit a log message event."""
@@ -80,10 +82,18 @@ class ObjectiveManager:
             for event_type in interests:
                 self._event_subscribers[event_type].append(objective)
         
+        # Auto-subscribe to all event types that any objective cares about
+        for event_type in self._event_subscribers.keys():
+            self.event_manager.subscribe(
+                event_type=event_type,
+                subscriber=self._on_event,
+                subscriber_name=f"ObjectiveManager.{event_type.name.lower()}",
+            )
+        
         # Initialize objectives with current game state
         self._initialize_objectives()
     
-    def on_event(self, event: GameEvent) -> None:
+    def _on_event(self, event: GameEvent) -> None:
         """Process a game event and route it to interested objectives.
         
         Args:
@@ -109,6 +119,9 @@ class ObjectiveManager:
                 
             if isinstance(objective, DefeatAllEnemiesObjective):
                 self._emit_log(f"*** VICTORY TRIGGERED *** Enemy count: {objective._enemy_count}", level="INFO")
+        
+        # Automatically check victory/defeat conditions after processing events
+        self.check_objectives()
     
     def check_victory(self) -> bool:
         """Check if all victory objectives are completed.
@@ -130,6 +143,32 @@ class ObjectiveManager:
         """
         return any(obj.status == ObjectiveStatus.FAILED 
                   for obj in self.defeat_objectives)
+    
+    def check_objectives(self) -> None:
+        """Check victory and defeat conditions and emit appropriate events."""
+        # Check victory conditions
+        if self.check_victory():
+            self._emit_log("Victory conditions met!", level="INFO")
+            self.event_manager.publish(
+                GameEnded(
+                    turn=0,  # TODO: Get current turn from game state
+                    result="victory",
+                ),
+                source="ObjectiveManager",
+            )
+            return
+
+        # Check defeat conditions
+        if self.check_defeat():
+            self._emit_log("Defeat conditions met!", level="INFO")
+            self.event_manager.publish(
+                GameEnded(
+                    turn=0,  # TODO: Get current turn from game state
+                    result="defeat",
+                ),
+                source="ObjectiveManager",
+            )
+    
     
     def get_active_objectives(self) -> list["Objective"]:
         """Get all objectives that are still in progress.

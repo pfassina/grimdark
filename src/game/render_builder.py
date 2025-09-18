@@ -12,6 +12,7 @@ import numpy as np
 if TYPE_CHECKING:
     from .map import GameMap
     from .scenario_menu import ScenarioMenu
+    from .ui_manager import UIManager
     from ..core.game_state import GameState
     from ..core.renderer import Renderer
 
@@ -36,37 +37,49 @@ class RenderBuilder:
     
     def __init__(
         self,
-        game_map: Optional["GameMap"],
         game_state: "GameState",
         renderer: "Renderer",
+        log_manager,
         scenario_menu: Optional["ScenarioMenu"] = None,
-        ui_manager=None,
-        log_manager=None
     ):
-        self.game_map = game_map
+        # Core dependencies (required)
         self.state = game_state
         self.renderer = renderer
-        self.scenario_menu = scenario_menu
-        self.ui_manager = ui_manager
         self.log_manager = log_manager
+        self.scenario_menu = scenario_menu
+        
+        # Optional dependencies (set later via setter methods)
+        self._game_map: Optional["GameMap"] = None
+        self._ui_manager: Optional["UIManager"] = None
         
         # Timing system for animations
         self.game_start_time = time.time()
         self.cursor_blink_interval = 0.5  # 2Hz blinking
     
+    # Properties for optional dependencies
+    @property
+    def game_map(self) -> "GameMap":
+        if self._game_map is None:
+            raise RuntimeError("GameMap not set. Call set_game_map() first.")
+        return self._game_map
+    
+    def set_game_map(self, game_map: "GameMap") -> None:
+        self._game_map = game_map
+    
+    @property
+    def ui_manager(self) -> "UIManager":
+        if self._ui_manager is None:
+            raise RuntimeError("UIManager not set. Call set_ui_manager() first.")
+        return self._ui_manager
+    
+    def set_ui_manager(self, ui_manager: "UIManager") -> None:
+        self._ui_manager = ui_manager
+    
     def set_scenario_menu(self, scenario_menu: "ScenarioMenu") -> None:
         """Update the scenario menu reference."""
         self.scenario_menu = scenario_menu
     
-    def set_ui_manager(self, ui_manager) -> None:
-        """Update the UI manager reference."""
-        self.ui_manager = ui_manager
     
-    def _ensure_game_map(self) -> "GameMap":
-        """Ensure game_map is initialized, raise error if not."""
-        if self.game_map is None:
-            raise RuntimeError("Game map not initialized. Render builder requires game map for battle rendering.")
-        return self.game_map
     
     def build_render_context(self) -> RenderContext:
         """Build complete render context from current game state."""
@@ -92,9 +105,8 @@ class RenderBuilder:
         context.viewport_width = screen_width
         context.viewport_height = viewport_height
         
-        game_map = self._ensure_game_map()
-        context.world_width = game_map.width
-        context.world_height = game_map.height
+        context.world_width = self.game_map.width
+        context.world_height = self.game_map.height
         
         # Add game state information
         context.current_turn = self.state.battle.current_turn
@@ -197,10 +209,9 @@ class RenderBuilder:
         from ..core.game_enums import TerrainType
         
         # Get structured tile data from game map
-        game_map = self._ensure_game_map()
-        terrain_types = game_map.tiles['terrain_type']
-        elevations = game_map.tiles['elevation']
-        height, width = game_map.height, game_map.width
+        terrain_types = self.game_map.tiles['terrain_type']
+        elevations = self.game_map.tiles['elevation']
+        height, width = self.game_map.height, self.game_map.width
         
         # Create coordinate meshgrid
         y_coords, x_coords = np.mgrid[0:height, 0:width]
@@ -230,10 +241,9 @@ class RenderBuilder:
     
     def _add_movement_overlays(self, context: RenderContext) -> None:
         """Add movement range overlay tiles with terrain preservation."""
-        game_map = self._ensure_game_map()
         for pos in self.state.battle.movement_range:
             # Get underlying terrain information
-            tile = game_map.get_tile(pos)
+            tile = self.game_map.get_tile(pos)
             
             context.overlays.append(
                 OverlayTileRenderData(
@@ -293,9 +303,8 @@ class RenderBuilder:
                 return "target"
             return None
         
-        game_map = self._ensure_game_map()
         context.units.extend(
-            DataConverter.units_to_render_data_list(game_map.units, highlight_units)
+            DataConverter.units_to_render_data_list(self.game_map.units, highlight_units)
         )
     
     def _is_in_viewport(self, position: Vector2) -> bool:
@@ -455,8 +464,7 @@ class RenderBuilder:
                     continue
         else:
             # Fallback to simple unit listing if timeline not available
-            game_map = self._ensure_game_map()
-            for i, unit in enumerate(game_map.units):
+            for i, unit in enumerate(self.game_map.units):
                 if unit and unit.is_alive and i < 8:  # Limit to 8 entries
                     timeline_entry = self._create_fallback_entry(unit, i)
                     timeline_entries.append(timeline_entry)
@@ -480,8 +488,7 @@ class RenderBuilder:
         
         if entry.entity_type == "unit":
             # Find the unit by its ID - this MUST exist if timeline is correct
-            game_map = self._ensure_game_map()
-            unit = game_map.get_unit(entry.entity_id)
+            unit = self.game_map.get_unit(entry.entity_id)
             if not unit:
                 raise ValueError(f"Timeline entry references non-existent unit ID: {entry.entity_id}")
             
@@ -554,16 +561,14 @@ class RenderBuilder:
         # Get currently selected unit for display
         selected_unit = None
         if hasattr(self.state.battle, 'selected_unit_id') and self.state.battle.selected_unit_id:
-            game_map = self._ensure_game_map()
-            for unit in game_map.units:
+            for unit in self.game_map.units:
                 if unit and unit.is_alive and unit.name == self.state.battle.selected_unit_id:
                     selected_unit = unit
                     break
         
         # If no selected unit, try to get unit at cursor position
         if not selected_unit:
-            game_map = self._ensure_game_map()
-            for unit in game_map.units:
+            for unit in self.game_map.units:
                 if unit and unit.is_alive and unit.position == self.state.cursor.position:
                     selected_unit = unit
                     break
@@ -626,11 +631,10 @@ class RenderBuilder:
         else:
             # Show tile information when no unit is selected
             cursor_pos = self.state.cursor.position
-            game_map = self._ensure_game_map()
-            if not game_map.is_valid_position(cursor_pos):
+            if not self.game_map.is_valid_position(cursor_pos):
                 # Don't show panel for out of bounds positions
                 return
-            tile = game_map.get_tile(cursor_pos)
+            tile = self.game_map.get_tile(cursor_pos)
             
             # Get terrain information
             terrain_name = tile.terrain_type.name.replace('_', ' ').title() if hasattr(tile.terrain_type, 'name') else str(tile.terrain_type)

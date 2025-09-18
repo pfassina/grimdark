@@ -103,11 +103,7 @@ class MoveCursorCommand(Command):
             if hasattr(handler, 'combat_manager') and handler.combat_manager:
                 handler.combat_manager.update_attack_targeting()
         
-        # Update movement preview if needed (non-targeting cursor movement)
-        if (handler.state.battle.selected_unit_id 
-            and handler.on_movement_preview_update
-            and handler.state.battle.phase.name not in ["ACTION_EXECUTION", "ACTION_TARGETING"]):
-            handler.on_movement_preview_update()
+        # Movement preview functionality removed - was unused placeholder
         
         return True
     

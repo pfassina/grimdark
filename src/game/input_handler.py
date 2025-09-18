@@ -64,7 +64,7 @@ class InputHandler:
         self.event_manager = event_manager
         self.scenario_menu = scenario_menu
 
-        # Optional dependencies (set later via setter methods)
+        # Optional dependencies configured when a battle is active
         self._game_map: Optional["GameMap"] = None
         self._combat_manager: Optional["CombatManager"] = None
         self._ui_manager: Optional["UIManager"] = None
@@ -98,41 +98,48 @@ class InputHandler:
     @property
     def game_map(self) -> "GameMap":
         if self._game_map is None:
-            raise RuntimeError("GameMap not set. Call set_game_map() first.")
+            raise RuntimeError(
+                "GameMap not set. Call configure_battle_dependencies() first."
+            )
         return self._game_map
-
-    def set_game_map(self, game_map: "GameMap") -> None:
-        self._game_map = game_map
 
     @property
     def combat_manager(self) -> "CombatManager":
         if self._combat_manager is None:
             raise RuntimeError(
-                "CombatManager not set. Call set_combat_manager() first."
+                "CombatManager not set. Call configure_battle_dependencies() first."
             )
         return self._combat_manager
-
-    def set_combat_manager(self, combat_manager: "CombatManager") -> None:
-        self._combat_manager = combat_manager
 
     @property
     def ui_manager(self) -> "UIManager":
         if self._ui_manager is None:
-            raise RuntimeError("UIManager not set. Call set_ui_manager() first.")
+            raise RuntimeError(
+                "UIManager not set. Call configure_battle_dependencies() first."
+            )
         return self._ui_manager
-
-    def set_ui_manager(self, ui_manager: "UIManager") -> None:
-        self._ui_manager = ui_manager
 
     @property
     def timeline_manager(self) -> "TimelineManager":
         if self._timeline_manager is None:
             raise RuntimeError(
-                "TimelineManager not set. Call set_timeline_manager() first."
+                "TimelineManager not set. Call configure_battle_dependencies() first."
             )
         return self._timeline_manager
 
-    def set_timeline_manager(self, timeline_manager: "TimelineManager") -> None:
+    def configure_battle_dependencies(
+        self,
+        *,
+        game_map: "GameMap",
+        combat_manager: "CombatManager",
+        ui_manager: "UIManager",
+        timeline_manager: "TimelineManager",
+    ) -> None:
+        """Configure all optional battle dependencies at once."""
+
+        self._game_map = game_map
+        self._combat_manager = combat_manager
+        self._ui_manager = ui_manager
         self._timeline_manager = timeline_manager
 
     def _emit_log(

@@ -231,6 +231,7 @@ class Game:
         # Initialize map-dependent managers only if we have a map
         if self.game_map:
             self._initialize_map_dependent_managers()
+            self._configure_battle_managers()
 
     def _initialize_map_dependent_managers(self) -> None:
         """Initialize managers that require a game map."""
@@ -270,15 +271,25 @@ class Game:
 
         # Inject dependencies into existing managers using setter methods
 
-        # Update Render Builder
-        self.render_builder.set_game_map(game_map)
-        self.render_builder.set_ui_manager(self.ui_manager)
+    def _configure_battle_managers(self) -> None:
+        """Configure cross-manager dependencies for active battles."""
 
-        # Update InputHandler
-        self.input_handler.set_game_map(game_map)
-        self.input_handler.set_ui_manager(self.ui_manager)
-        self.input_handler.set_combat_manager(self.combat_manager)
-        self.input_handler.set_timeline_manager(self.timeline_manager)
+        game_map = self._ensure_game_map()
+
+        self.render_builder.configure_battle_dependencies(
+            game_map=game_map,
+            ui_manager=self.ui_manager,
+        )
+
+        self.input_handler.configure_battle_dependencies(
+            game_map=game_map,
+            combat_manager=self.combat_manager,
+            ui_manager=self.ui_manager,
+            timeline_manager=self.timeline_manager,
+        )
+
+        if self.scenario:
+            self.ui_manager.set_scenario(self.scenario)
 
     def _setup_manager_callbacks(self) -> None:
         """Wire up callbacks between managers and main game.
@@ -369,18 +380,6 @@ class Game:
         self.renderer.render_frame(context)
         self.renderer.present()
 
-    def _update_managers_with_new_scenario(self) -> None:
-        """Update managers with scenario-specific data after scenario load.
-
-        This method is called after _initialize_map_dependent_managers,
-        so all managers already exist and have their dependencies wired up.
-        We only need to update scenario-specific data.
-        """
-        scenario = self.scenario_manager.current_scenario
-
-        # Update UI manager with the new scenario
-        self.ui_manager.set_scenario(scenario)
-
     def load_selected_scenario(self) -> None:
         """Load the scenario selected from the menu."""
         # Load scenario through ScenarioManager
@@ -393,11 +392,11 @@ class Game:
         # Initialize map-dependent managers now that we have a game map
         self._initialize_map_dependent_managers()
 
+        # Update all managers with new scenario and map
+        self._configure_battle_managers()
+
         # Process events immediately to trigger phase transition
         self.event_manager.process_events()
-
-        # Update all managers with new scenario and map
-        self._update_managers_with_new_scenario()
 
         # Initialize objective system and timeline
         self.scenario_manager.initialize_objective_system()

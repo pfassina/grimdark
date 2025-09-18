@@ -48,7 +48,7 @@ class RenderBuilder:
         self.log_manager = log_manager
         self.scenario_menu = scenario_menu
         
-        # Optional dependencies (set later via setter methods)
+        # Optional dependencies configured when a battle is active
         self._game_map: Optional["GameMap"] = None
         self._ui_manager: Optional["UIManager"] = None
         
@@ -60,24 +60,30 @@ class RenderBuilder:
     @property
     def game_map(self) -> "GameMap":
         if self._game_map is None:
-            raise RuntimeError("GameMap not set. Call set_game_map() first.")
+            raise RuntimeError(
+                "GameMap not set. Call configure_battle_dependencies() first."
+            )
         return self._game_map
-    
-    def set_game_map(self, game_map: "GameMap") -> None:
-        self._game_map = game_map
-    
+
     @property
     def ui_manager(self) -> "UIManager":
         if self._ui_manager is None:
-            raise RuntimeError("UIManager not set. Call set_ui_manager() first.")
+            raise RuntimeError(
+                "UIManager not set. Call configure_battle_dependencies() first."
+            )
         return self._ui_manager
-    
-    def set_ui_manager(self, ui_manager: "UIManager") -> None:
-        self._ui_manager = ui_manager
-    
+
     def set_scenario_menu(self, scenario_menu: "ScenarioMenu") -> None:
         """Update the scenario menu reference."""
         self.scenario_menu = scenario_menu
+
+    def configure_battle_dependencies(
+        self, *, game_map: "GameMap", ui_manager: "UIManager"
+    ) -> None:
+        """Configure optional battle dependencies in a single call."""
+
+        self._game_map = game_map
+        self._ui_manager = ui_manager
     
     
     

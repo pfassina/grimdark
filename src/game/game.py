@@ -7,7 +7,7 @@ to specialized manager classes.
 """
 
 import time
-from typing import Optional
+from typing import Optional, TypeVar
 
 from ..core.event_manager import EventManager
 from ..core.events import GameEnded, GameStarted, LogMessage, ScenarioLoaded
@@ -26,6 +26,9 @@ from .scenario_menu import ScenarioMenu
 from .selection_manager import SelectionManager
 from .timeline_manager import TimelineManager
 from .ui_manager import UIManager
+
+
+TManager = TypeVar("TManager")
 
 
 class Game:
@@ -64,69 +67,48 @@ class Game:
         self._selection_manager: Optional[SelectionManager] = None
 
     # Properties for managers with fail-fast validation
+    def _require_manager(self, manager: Optional[TManager], name: str) -> TManager:
+        """Return the manager if initialized, otherwise raise a helpful error."""
+
+        if manager is None:
+            raise RuntimeError(f"{name} not initialized. Call initialize() first.")
+        return manager
+
     @property
     def log_manager(self) -> LogManager:
-        if self._log_manager is None:
-            raise RuntimeError("LogManager not initialized. Call initialize() first.")
-        return self._log_manager
+        return self._require_manager(self._log_manager, "LogManager")
 
     @property
     def phase_manager(self) -> PhaseManager:
-        if self._phase_manager is None:
-            raise RuntimeError("PhaseManager not initialized. Call initialize() first.")
-        return self._phase_manager
+        return self._require_manager(self._phase_manager, "PhaseManager")
 
     @property
     def ui_manager(self) -> UIManager:
-        if self._ui_manager is None:
-            raise RuntimeError("UIManager not initialized. Call initialize() first.")
-        return self._ui_manager
+        return self._require_manager(self._ui_manager, "UIManager")
 
     @property
     def combat_manager(self) -> CombatManager:
-        if self._combat_manager is None:
-            raise RuntimeError(
-                "CombatManager not initialized. Call initialize() first."
-            )
-        return self._combat_manager
+        return self._require_manager(self._combat_manager, "CombatManager")
 
     @property
     def timeline_manager(self) -> TimelineManager:
-        if self._timeline_manager is None:
-            raise RuntimeError(
-                "TimelineManager not initialized. Call initialize() first."
-            )
-        return self._timeline_manager
+        return self._require_manager(self._timeline_manager, "TimelineManager")
 
     @property
     def render_builder(self) -> RenderBuilder:
-        if self._render_builder is None:
-            raise RuntimeError(
-                "RenderBuilder not initialized. Call initialize() first."
-            )
-        return self._render_builder
+        return self._require_manager(self._render_builder, "RenderBuilder")
 
     @property
     def input_handler(self) -> InputHandler:
-        if self._input_handler is None:
-            raise RuntimeError("InputHandler not initialized. Call initialize() first.")
-        return self._input_handler
+        return self._require_manager(self._input_handler, "InputHandler")
 
     @property
     def scenario_manager(self) -> ScenarioManager:
-        if self._scenario_manager is None:
-            raise RuntimeError(
-                "ScenarioManager not initialized. Call initialize() first."
-            )
-        return self._scenario_manager
+        return self._require_manager(self._scenario_manager, "ScenarioManager")
 
     @property
     def selection_manager(self) -> SelectionManager:
-        if self._selection_manager is None:
-            raise RuntimeError(
-                "SelectionManager not initialized. Call initialize() first."
-            )
-        return self._selection_manager
+        return self._require_manager(self._selection_manager, "SelectionManager")
 
     # Keep the _ensure_game_map for now since game_map is not a manager
     def _ensure_game_map(self) -> GameMap:
@@ -350,14 +332,14 @@ class Game:
             if self.state.battle.phase == BattlePhase.TIMELINE_PROCESSING:
                 self.timeline_manager.process_timeline()
 
+        events = self.renderer.get_input_events()
+
         # Handle different game phases for input routing
         if self.state.phase == GamePhase.GAME_OVER:
-            events = self.renderer.get_input_events()
             self.input_handler.handle_input_events(events)
             return
 
-        elif self.state.phase == GamePhase.MAIN_MENU:
-            events = self.renderer.get_input_events()
+        if self.state.phase == GamePhase.MAIN_MENU:
             for event in events:
                 if event.event_type == InputType.QUIT:
                     self.running = False
@@ -366,7 +348,6 @@ class Game:
             return
 
         # Handle battle phase input
-        events = self.renderer.get_input_events()
         self.input_handler.handle_input_events(events)
 
         # Process high-priority events immediately after input handling

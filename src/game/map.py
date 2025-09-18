@@ -8,11 +8,11 @@ from typing import Optional
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.data_structures import Vector2, VectorArray
-from ..core.game_enums import Team, TerrainType
+from ..core.data.data_structures import Vector2, VectorArray
+from ..core.data.game_enums import Team, TerrainType
 from ..core.tileset_loader import get_tileset_config
 from .tile import Tile
-from .unit import Unit
+from .entities.unit import Unit
 
 
 class UnitCollection:
@@ -263,7 +263,7 @@ class GameMap:
         terrain_types = self.tiles["terrain_type"]
 
         # Import terrain data
-        from ..core.game_info import TERRAIN_DATA
+        from ..core.data.game_info import TERRAIN_DATA
 
         max_terrain_value = max(terrain.value for terrain in TerrainType)
         blocks_movement = np.zeros(max_terrain_value + 1, dtype=np.bool_)
@@ -299,13 +299,13 @@ class GameMap:
 
     def is_terrain_blocking(self, terrain_type: TerrainType) -> bool:
         """Check if terrain type blocks movement using direct lookup."""
-        from ..core.game_info import TERRAIN_DATA
+        from ..core.data.game_info import TERRAIN_DATA
 
         return TERRAIN_DATA[terrain_type].blocks_movement
 
     def get_terrain_move_cost(self, terrain_type: TerrainType) -> int:
         """Get movement cost for terrain type using direct lookup."""
-        from ..core.game_info import TERRAIN_DATA
+        from ..core.data.game_info import TERRAIN_DATA
 
         return TERRAIN_DATA[terrain_type].move_cost
 
@@ -575,7 +575,7 @@ class GameMap:
         terrain_types = self.tiles["terrain_type"]
 
         # Import terrain data for move costs and blocking
-        from ..core.game_info import TERRAIN_DATA
+        from ..core.data.game_info import TERRAIN_DATA
 
         # Create movement cost lookup array for all terrain types
         max_terrain_value = max(terrain.value for terrain in TerrainType)

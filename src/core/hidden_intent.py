@@ -17,11 +17,11 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional
 
-from .data_structures import Vector2
+from .data.data_structures import Vector2
 
 if TYPE_CHECKING:
-    from ..core.actions import Action
-    from ..game.unit import Unit
+    from ..core.engine.actions import Action
+    from ..game.entities.unit import Unit
 
 
 class IntentVisibility(Enum):

@@ -14,7 +14,7 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from src.game.unit import Unit
+    from src.game.entities.unit import Unit
 
 
 class WoundSeverity(Enum):

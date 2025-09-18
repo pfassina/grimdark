@@ -9,23 +9,23 @@ to specialized manager classes.
 import time
 from typing import Optional, TypeVar
 
-from ..core.event_manager import EventManager
-from ..core.events import GameEnded, GameStarted, LogMessage, ScenarioLoaded
-from ..core.game_state import BattlePhase, GamePhase, GameState
+from ..core.events.event_manager import EventManager
+from ..core.events.events import GameEnded, GameStarted, LogMessage, ScenarioLoaded
+from ..core.engine.game_state import BattlePhase, GamePhase, GameState
 from ..core.input import InputType
 from ..core.renderer import Renderer
-from .combat_manager import CombatManager
 from .input_handler import InputHandler
-from .log_manager import LogManager
 from .map import GameMap
-from .phase_manager import PhaseManager
 from .render_builder import RenderBuilder
-from .scenario import Scenario
-from .scenario_manager import ScenarioManager
-from .scenario_menu import ScenarioMenu
-from .selection_manager import SelectionManager
-from .timeline_manager import TimelineManager
-from .ui_manager import UIManager
+from .managers.combat_manager import CombatManager
+from .managers.log_manager import LogManager
+from .managers.phase_manager import PhaseManager
+from .managers.scenario_manager import ScenarioManager
+from .managers.selection_manager import SelectionManager
+from .managers.timeline_manager import TimelineManager
+from .managers.ui_manager import UIManager
+from .scenarios.scenario import Scenario
+from .scenarios.scenario_menu import ScenarioMenu
 
 
 TManager = TypeVar("TManager")

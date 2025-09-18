@@ -11,14 +11,14 @@ import numpy as np
 
 if TYPE_CHECKING:
     from .map import GameMap
-    from .scenario_menu import ScenarioMenu
-    from .ui_manager import UIManager
-    from ..core.game_state import GameState
+    from .scenarios.scenario_menu import ScenarioMenu
+    from .managers.ui_manager import UIManager
+    from ..core.engine.game_state import GameState
     from ..core.renderer import Renderer
 
-from ..core.data_structures import DataConverter, Vector2
-from ..core.game_state import GamePhase
-from ..core.renderable import (
+from ..core.data.data_structures import DataConverter, Vector2
+from ..core.engine.game_state import GamePhase
+from ..core.entities.renderable import (
     AttackTargetRenderData,
     CursorRenderData,
     LogPanelRenderData,
@@ -216,7 +216,7 @@ class RenderBuilder:
         Creates all tile render data at once using numpy operations
         instead of nested loops for significant performance improvement.
         """
-        from ..core.game_enums import TerrainType
+        from ..core.data.game_enums import TerrainType
         
         # Get structured tile data from game map
         terrain_types = self.game_map.tiles['terrain_type']
@@ -303,7 +303,7 @@ class RenderBuilder:
         """Add unit data to the render context with highlighting."""
         def highlight_units(unit):
             """Determine highlight type for units."""
-            from ..core.game_state import BattlePhase
+            from ..core.engine.game_state import BattlePhase
             
             if (
                 self.state.battle.phase == BattlePhase.ACTION_EXECUTION
@@ -325,7 +325,7 @@ class RenderBuilder:
     
     def _add_hazards_to_context(self, context: RenderContext) -> None:
         """Add hazard data to the render context."""
-        from ..core.renderable import HazardRenderData
+        from ..core.entities.renderable import HazardRenderData
         
         # TODO: Enable hazard rendering when hazard system is complete
         # The hazard manager is WIP - skip hazard rendering until fully implemented
@@ -490,7 +490,7 @@ class RenderBuilder:
     
     def _convert_timeline_entry(self, entry, index: int, current_time: int) -> "TimelineEntryRenderData":
         """Convert a timeline entry to render data."""
-        from ..core.renderable import TimelineEntryRenderData
+        from ..core.entities.renderable import TimelineEntryRenderData
         
         # Just provide raw data, let renderer decide symbols/formatting
         entity_name = "Unknown"
@@ -536,7 +536,7 @@ class RenderBuilder:
     
     def _create_fallback_entry(self, unit, index: int) -> "TimelineEntryRenderData":
         """Create fallback timeline entry for unit.""" 
-        from ..core.renderable import TimelineEntryRenderData
+        from ..core.entities.renderable import TimelineEntryRenderData
         
         # Determine basic action status
         action_desc = "Ready"
@@ -561,7 +561,7 @@ class RenderBuilder:
     
     def _add_unit_info_panel(self, context: RenderContext, screen_width: int, screen_height: int) -> None:
         """Add unit info panel data to render context."""
-        from ..core.renderable import UnitInfoPanelRenderData
+        from ..core.entities.renderable import UnitInfoPanelRenderData
         
         # Calculate panel dimensions (same as terminal renderer)
         bottom_panel_height = max(4, int(screen_height * 0.20))
@@ -687,7 +687,7 @@ class RenderBuilder:
     
     def _add_action_menu_panel(self, context: RenderContext, screen_width: int, screen_height: int) -> None:
         """Add action menu panel data to render context."""
-        from ..core.renderable import ActionMenuPanelRenderData, ActionMenuItemRenderData
+        from ..core.entities.renderable import ActionMenuPanelRenderData, ActionMenuItemRenderData
         
         # Calculate panel dimensions
         bottom_panel_height = max(4, int(screen_height * 0.20))

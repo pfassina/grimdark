@@ -62,17 +62,19 @@ The project uses a streamlined unit testing approach focused on the timeline-bas
    - Unit tests + linting (ruff) + type checking (pyright)
    - Ensures both functionality and code quality
 
-### Test Structure
+### Test Structure - **Mirrors the package hierarchy**
 
-- **tests/test_timeline.py**: Core Timeline system tests
-- **tests/test_event_manager.py**: Event Manager and communication tests  
-- **tests/test_data_structures.py**: Vector2, GameState, and core data tests
-- **tests/test_components.py**: Unit components and ECS system tests
-- **tests/test_managers.py**: Manager systems and integration tests
-- **tests/test_actions.py**: Action system and weight calculation tests
-- **tests/test_morale_system.py**: Morale and panic psychology tests
-- **tests/test_hazards.py**: Environmental hazard system tests
-- **tests/conftest.py**: Basic fixtures and test utilities
+- **Core Tests** (`tests/core/`)
+  - `tests/core/engine/test_timeline.py`: Core Timeline system tests
+  - `tests/core/events/test_event_manager.py`: Event Manager and communication tests
+  - `tests/core/data/test_data_structures.py`: Vector2, GameState, and core data tests
+- **Game Tests** (`tests/game/`)
+  - `tests/game/entities/test_components.py`: Unit components and ECS system tests
+  - `tests/game/managers/test_managers.py`: Manager systems and integration tests
+- **Test Utilities**
+  - `tests/conftest.py`: Basic fixtures and test utilities
+
+**Note**: Test structure now mirrors the source code package organization for easier navigation and maintenance.
 
 ### Testing New Features
 
@@ -135,43 +137,66 @@ The system uses an **event-driven architecture** with timeline-based combat flow
 
 ### Core Components
 
-1. **Core Layer** (`src/core/`)
-   - `timeline.py` - Timeline queue and entry management for fluid turn order
-   - `actions.py` - Action class hierarchy with weight categories and validation
-   - `events.py` - Event definitions for inter-system communication
-   - `event_manager.py` - Publisher-subscriber event routing and coordination
-   - `wounds.py` - Wound types, severity, and healing mechanics for persistent consequences **(WIP)**
-   - `hazards.py` - Environmental hazard base classes and spreading effects **(WIP)**
-   - `hidden_intent.py` - Information warfare and intent revelation system **(WIP)**
-   - `renderable.py` - Data classes for renderable entities (NO game logic)
-   - `renderer.py` - Abstract base class all renderers must implement
-   - `game_state.py` - Centralized state management
-   - `input.py` - Generic input events (renderer-agnostic)
-   - `data_structures.py` - Vector2 and VectorArray for efficient spatial operations
-   - `game_enums.py` - Centralized enums for teams, unit classes, terrain types
+1. **Core Layer** (`src/core/`) - **Organized into focused subpackages**
+   - **Engine** (`src/core/engine/`)
+     - `timeline.py` - Timeline queue and entry management for fluid turn order
+     - `actions.py` - Action class hierarchy with weight categories and validation
+     - `game_state.py` - Centralized state management
+   - **Events** (`src/core/events/`)
+     - `events.py` - Event definitions for inter-system communication
+     - `event_manager.py` - Publisher-subscriber event routing and coordination
+   - **Entities** (`src/core/entities/`)
+     - `components.py` - Base Component and Entity classes for ECS system
+     - `renderable.py` - Data classes for renderable entities (NO game logic)
+   - **Data** (`src/core/data/`)
+     - `data_structures.py` - Vector2 and VectorArray for efficient spatial operations
+     - `game_enums.py` - Centralized enums for teams, unit classes, terrain types
+     - `game_info.py` - Static game data and lookup tables
+   - **Other** (remaining in core root)
+     - `renderer.py` - Abstract base class all renderers must implement
+     - `input.py` - Generic input events (renderer-agnostic)
+     - `wounds.py` - Wound types, severity, and healing mechanics **(WIP)**
+     - `hazards.py` - Environmental hazard base classes and spreading effects **(WIP)**
+     - `hidden_intent.py` - Information warfare and intent revelation system **(WIP)**
 
-2. **Game Logic** (`src/game/`)
-   - `game.py` - **Main orchestrator** that coordinates all manager systems through EventManager
-   - `timeline_manager.py` - Timeline processing, unit activation, and turn flow coordination
-   - `combat_manager.py` - Combat targeting, validation, and UI integration
-   - `combat_resolver.py` - Damage application, wound generation, and combat execution
-   - `battle_calculator.py` - Damage prediction and forecasting (read-only)
-   - `morale_manager.py` - Morale calculations, panic state management, and psychological effects **(WIP)**
-   - `hazard_manager.py` - Environmental hazard processing, spreading, and timeline integration **(WIP)**
-   - `escalation_manager.py` - Time pressure through reinforcements and environmental deterioration **(WIP)**
-   - `ai_controller.py` - Timeline-aware AI with personality types and tactical assessment
-   - `interrupt_system.py` - Prepared actions and reaction system **(WIP)**
-   - `input_handler.py` - User input processing and action routing
-   - `ui_manager.py` - Overlays, dialogs, banners, and modal UI state
-   - `scenario_manager.py` - Scenario loading, map creation, and game state initialization
-   - `selection_manager.py` - Cursor positioning and unit selection state management
-   - `render_builder.py` - Render context construction from game state
-   - `map.py` - Grid-based battlefield with vectorized operations, pathfinding, CSV map loading
-   - `unit.py` - Component-based units with Vector2 positioning
-   - `components.py` - ECS-like components (Actor, Health, Movement, Combat, Morale, Wound, Interrupt)
-   - `scenario_loader.py` - YAML scenario parsing and game state initialization
-   - `objectives.py` - Victory/defeat condition implementations
-   - `objective_manager.py` - Event-driven objective tracking
+2. **Game Logic** (`src/game/`) - **Organized into focused subpackages**
+   - **Core Game Files** (in `src/game/` root)
+     - `game.py` - **Main orchestrator** that coordinates all manager systems through EventManager
+     - `map.py` - Grid-based battlefield with vectorized operations, pathfinding, CSV map loading
+     - `tile.py` - Tile data structures and terrain handling
+     - `input_handler.py` - User input processing and action routing
+     - `render_builder.py` - Render context construction from game state
+   - **Managers** (`src/game/managers/`)
+     - `timeline_manager.py` - Timeline processing, unit activation, and turn flow coordination
+     - `combat_manager.py` - Combat targeting, validation, and UI integration
+     - `morale_manager.py` - Morale calculations, panic state management **(WIP)**
+     - `hazard_manager.py` - Environmental hazard processing and timeline integration **(WIP)**
+     - `escalation_manager.py` - Time pressure through reinforcements **(WIP)**
+     - `ui_manager.py` - Overlays, dialogs, banners, and modal UI state
+     - `scenario_manager.py` - Scenario loading, map creation, and game state initialization
+     - `selection_manager.py` - Cursor positioning and unit selection state management
+     - `objective_manager.py` - Event-driven objective tracking
+     - `phase_manager.py` - Game phase transitions and state management
+     - `log_manager.py` - Logging and debug message handling
+   - **Combat** (`src/game/combat/`)
+     - `combat_resolver.py` - Damage application, wound generation, and combat execution
+     - `battle_calculator.py` - Damage prediction and forecasting (read-only)
+   - **AI** (`src/game/ai/`)
+     - `ai_controller.py` - Timeline-aware AI with personality types and tactical assessment
+     - `ai_behaviors.py` - AI behavior patterns and decision-making logic
+   - **Entities** (`src/game/entities/`)
+     - `unit.py` - Component-based units with Vector2 positioning
+     - `components.py` - Game-specific components (Actor, Health, Movement, Combat, Morale, Wound, Interrupt)
+     - `unit_templates.py` - Unit class definitions and base stats
+     - `map_objects.py` - Interactive map objects and environmental elements
+   - **Scenarios** (`src/game/scenarios/`)
+     - `scenario_loader.py` - YAML scenario parsing and game state initialization
+     - `scenario.py` - Scenario data structures and validation
+     - `scenario_structures.py` - Data classes for scenario definitions
+     - `scenario_menu.py` - Scenario selection interface
+     - `objectives.py` - Victory/defeat condition implementations
+   - **Systems** (`src/game/systems/`)
+     - `interrupt_system.py` - Prepared actions and reaction system **(WIP)**
 
 3. **Renderers** (`src/renderers/`)
    - Each renderer independently decides HOW to display the render context

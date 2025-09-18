@@ -6,7 +6,7 @@ from typing import Optional
 from collections import defaultdict
 
 from ..core.renderer import Renderer, RendererConfig
-from ..core.renderable import (
+from ..core.entities.renderable import (
     RenderContext, TileRenderData, UnitRenderData, 
     CursorRenderData, OverlayTileRenderData, MenuRenderData,
     BattleForecastRenderData, DialogRenderData, BannerRenderData,

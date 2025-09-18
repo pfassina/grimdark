@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from dataclasses import dataclass
 
-from .renderable import RenderContext
+from .entities.renderable import RenderContext
 from .input import InputEvent
 
 

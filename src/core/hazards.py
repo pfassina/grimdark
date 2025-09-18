@@ -13,11 +13,11 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional
 
-from .data_structures import Vector2
-from .game_enums import Team
+from .data.data_structures import Vector2
+from .data.game_enums import Team
 
 if TYPE_CHECKING:
-    from src.game.unit import Unit
+    from src.game.entities.unit import Unit
     from src.game.map import GameMap
 
 

@@ -7,10 +7,10 @@ for handling different types of user input actions.
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from ..actions import ActionResult
-from ..game_state import BattlePhase
-from ..data_structures import VectorArray, Vector2
-from ..events import ActionSelected
+from ..engine.actions import ActionResult
+from ..engine.game_state import BattlePhase
+from ..data.data_structures import VectorArray, Vector2
+from ..events.events import ActionSelected
 
 if TYPE_CHECKING:
     from ...game.input_handler import InputHandler
@@ -87,7 +87,7 @@ class MoveCursorCommand(Command):
             handler.log_manager.debug(f"MoveCursor: {old_pos} -> {new_pos} (delta: {self.dx}, {self.dy})")
         
         # Emit cursor moved event for systems that need to react to cursor changes
-        from ..events import CursorMoved
+        from ..events.events import CursorMoved
         handler.event_manager.publish(
             CursorMoved(
                 turn=handler.state.battle.current_turn,
@@ -175,7 +175,7 @@ class ConfirmSelectionCommand(Command):
         phase = handler.state.battle.phase
 
         # Log using event system
-        from ..events import DebugMessage
+        from ..events.events import DebugMessage
         handler.event_manager.publish(
             DebugMessage(turn=0, message=f"ConfirmSelection: cursor at {cursor_position}, phase: {phase.name}", source="ConfirmSelectionCommand"),
             source="ConfirmSelectionCommand"

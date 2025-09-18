@@ -13,12 +13,12 @@ Design Principles:
 from typing import Optional, Iterable, TYPE_CHECKING
 from dataclasses import dataclass
 
-from .game_enums import Team
-from .data_structures import Vector2
+from .data.game_enums import Team
+from .data.data_structures import Vector2
 
 if TYPE_CHECKING:
     from ..game.map import GameMap
-    from ..game.unit import Unit
+    from ..game.entities.unit import Unit
 
 
 @dataclass

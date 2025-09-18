@@ -8,7 +8,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from ...core.game_state import GameState
+    from ...core.engine.game_state import GameState
 
 
 class InputContext(Enum):

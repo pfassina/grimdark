@@ -13,20 +13,20 @@ The result is a clean, maintainable, and easily extensible input system.
 from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 if TYPE_CHECKING:
-    from ..core.event_manager import EventManager
-    from ..core.game_state import GameState
+    from ..core.events.event_manager import EventManager
+    from ..core.engine.game_state import GameState
     from ..core.renderer import Renderer
-    from .combat_manager import CombatManager
+    from .managers.combat_manager import CombatManager
     from .map import GameMap
-    from .scenario_menu import ScenarioMenu
-    from .timeline_manager import TimelineManager
-    from .ui_manager import UIManager
-    from .unit import Unit
+    from .scenarios.scenario_menu import ScenarioMenu
+    from .managers.timeline_manager import TimelineManager
+    from .managers.ui_manager import UIManager
+    from .entities.unit import Unit
 
-from ..core.actions import ActionResult
-from ..core.data_structures import Vector2, VectorArray
-from ..core.event_manager import EventPriority
-from ..core.events import (
+from ..core.engine.actions import ActionResult
+from ..core.data.data_structures import Vector2, VectorArray
+from ..core.events.event_manager import EventPriority
+from ..core.events.events import (
     ActionCanceled,
     ActionSelected,
     LogMessage,
@@ -35,8 +35,8 @@ from ..core.events import (
     MovementCanceled,
     UnitMoved,
 )
-from ..core.game_enums import Team
-from ..core.game_state import BattlePhase
+from ..core.data.game_enums import Team
+from ..core.engine.game_state import BattlePhase
 from ..core.input import InputEvent, InputType
 
 # Import our new modular components
@@ -74,7 +74,7 @@ class InputHandler:
         self._timeline_manager: Optional["TimelineManager"] = None
 
         # Initialize log manager for error logging
-        from .log_manager import LogManager
+        from .managers.log_manager import LogManager
 
         self.log_manager = LogManager(event_manager, game_state)
 

@@ -10,7 +10,7 @@ This module coordinates input processing through specialized components:
 The result is a clean, maintainable, and easily extensible input system.
 """
 
-from typing import TYPE_CHECKING, Any, Callable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Optional, TypeVar
 
 if TYPE_CHECKING:
     from ..core.event_manager import EventManager
@@ -46,6 +46,9 @@ from ..core.input_system import (
     InputContextManager,
     KeyConfigLoader,
 )
+
+
+TManager = TypeVar("TManager")
 
 
 class InputHandler:
@@ -94,38 +97,31 @@ class InputHandler:
             source="InputHandler",
         )
 
+    # Helper method for manager validation
+    def _require_manager(self, manager: Optional[TManager], name: str) -> TManager:
+        """Return the manager if initialized, otherwise raise a helpful error."""
+        if manager is None:
+            raise RuntimeError(
+                f"{name} not set. Call configure_battle_dependencies() first."
+            )
+        return manager
+
     # Properties for optional dependencies
     @property
     def game_map(self) -> "GameMap":
-        if self._game_map is None:
-            raise RuntimeError(
-                "GameMap not set. Call configure_battle_dependencies() first."
-            )
-        return self._game_map
+        return self._require_manager(self._game_map, "GameMap")
 
     @property
     def combat_manager(self) -> "CombatManager":
-        if self._combat_manager is None:
-            raise RuntimeError(
-                "CombatManager not set. Call configure_battle_dependencies() first."
-            )
-        return self._combat_manager
+        return self._require_manager(self._combat_manager, "CombatManager")
 
     @property
     def ui_manager(self) -> "UIManager":
-        if self._ui_manager is None:
-            raise RuntimeError(
-                "UIManager not set. Call configure_battle_dependencies() first."
-            )
-        return self._ui_manager
+        return self._require_manager(self._ui_manager, "UIManager")
 
     @property
     def timeline_manager(self) -> "TimelineManager":
-        if self._timeline_manager is None:
-            raise RuntimeError(
-                "TimelineManager not set. Call configure_battle_dependencies() first."
-            )
-        return self._timeline_manager
+        return self._require_manager(self._timeline_manager, "TimelineManager")
 
     def configure_battle_dependencies(
         self,
@@ -438,7 +434,7 @@ class InputHandler:
         # Handle confirm_friendly_fire
         if dialog_type == "confirm_friendly_fire":
             if selection == 0 and self.combat_manager:  # Yes - proceed with attack
-                success = self.combat_manager.execute_confirmed_attack()
+                self.combat_manager.execute_confirmed_attack()
             self.state.ui.close_dialog()
             return
 

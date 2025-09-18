@@ -193,4 +193,4 @@ class SelectionManager:
         # Clear unit selection (selection state)
         self.state.battle.selected_unit_id = None
         
-        self._emit_log(f"Unit turn ended - cleared selection state")
+        self._emit_log("Unit turn ended - cleared selection state")

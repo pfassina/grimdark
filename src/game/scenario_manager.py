@@ -5,7 +5,7 @@ that was previously scattered in game.py. It centralizes all scenario-related
 operations and emits appropriate events for the game flow.
 """
 
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 if TYPE_CHECKING:
     from ..core.event_manager import EventManager
@@ -21,6 +21,9 @@ from ..core.events import (
 )
 from ..core.game_view import GameView
 from .scenario_loader import ScenarioLoader
+
+
+TManager = TypeVar("TManager")
 
 
 class ScenarioManager:
@@ -69,17 +72,21 @@ class ScenarioManager:
             source="ScenarioManager",
         )
 
+    def _require_manager(self, manager: Optional[TManager], name: str) -> TManager:
+        """Return the manager if initialized, otherwise raise a helpful error."""
+        if manager is None:
+            raise RuntimeError(f"No {name} loaded")
+        return manager
+
     @property
     def current_scenario(self) -> "Scenario":
         """Get the currently loaded scenario."""
-        assert self._current_scenario is not None, "No scenario loaded"
-        return self._current_scenario
+        return self._require_manager(self._current_scenario, "scenario")
 
     @property
     def current_game_map(self) -> "GameMap":
         """Get the currently loaded game map."""
-        assert self._current_game_map is not None, "No game map loaded"
-        return self._current_game_map
+        return self._require_manager(self._current_game_map, "game map")
 
     def load_selected_scenario_from_menu(self) -> tuple["Scenario", "GameMap"]:
         """Load the scenario selected from the menu."""

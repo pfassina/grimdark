@@ -5,7 +5,7 @@ This module handles the conversion from game state to render contexts
 that can be consumed by any renderer implementation.
 """
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Optional, TypeVar
 
 import numpy as np
 
@@ -32,6 +32,9 @@ from ..core.renderable import (
 )
 
 
+TManager = TypeVar("TManager")
+
+
 class RenderBuilder:
     """Builds render contexts from game state data."""
     
@@ -56,22 +59,23 @@ class RenderBuilder:
         self.game_start_time = time.time()
         self.cursor_blink_interval = 0.5  # 2Hz blinking
     
+    # Helper method for manager validation
+    def _require_manager(self, manager: Optional[TManager], name: str) -> TManager:
+        """Return the manager if initialized, otherwise raise a helpful error."""
+        if manager is None:
+            raise RuntimeError(
+                f"{name} not set. Call configure_battle_dependencies() first."
+            )
+        return manager
+    
     # Properties for optional dependencies
     @property
     def game_map(self) -> "GameMap":
-        if self._game_map is None:
-            raise RuntimeError(
-                "GameMap not set. Call configure_battle_dependencies() first."
-            )
-        return self._game_map
+        return self._require_manager(self._game_map, "GameMap")
 
     @property
     def ui_manager(self) -> "UIManager":
-        if self._ui_manager is None:
-            raise RuntimeError(
-                "UIManager not set. Call configure_battle_dependencies() first."
-            )
-        return self._ui_manager
+        return self._require_manager(self._ui_manager, "UIManager")
 
     def set_scenario_menu(self, scenario_menu: "ScenarioMenu") -> None:
         """Update the scenario menu reference."""

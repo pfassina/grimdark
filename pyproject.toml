@@ -2,7 +2,8 @@
 # Exclude directories
 exclude = [
     ".direnv",
-    "tests",
+    ".git",
+    "tests", 
     "demos",
 ]
 

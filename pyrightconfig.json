@@ -1,6 +1,6 @@
 {
     "include": ["./src"],
-    "exclude": [".direnv", "**/.direnv/**"],
+    "exclude": [".direnv", "**/.direnv/**", ".git", "**/.git/**"],
     "reportUnusedImport": "warning",
     "reportUnusedVariable": "warning",
     "reportUnusedFunction": "warning",

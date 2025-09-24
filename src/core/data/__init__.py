@@ -7,7 +7,7 @@ This package contains fundamental data types and game definitions:
 """
 
 from .data_structures import Vector2, VectorArray, BaseUnitData, DataConverter, ValidationMixin
-from .game_enums import Team, UnitClass, TerrainType, ObjectiveType, ObjectiveStatus, LayerType, PanicTrigger, AOEPattern, UNIT_CLASS_NAMES, TERRAIN_NAMES, AOE_PATTERN_NAMES
+from .game_enums import Team, UnitClass, TerrainType, ObjectiveType, ObjectiveStatus, LayerType, PanicTrigger, AOEPattern, ComponentType, UNIT_CLASS_NAMES, TERRAIN_NAMES, AOE_PATTERN_NAMES, COMPONENT_TYPE_NAMES
 from .game_info import BaseInfo, UnitClassInfo, TerrainInfo, UNIT_CLASS_DATA, TERRAIN_DATA
 
 __all__ = [
@@ -24,9 +24,11 @@ __all__ = [
     "LayerType", 
     "PanicTrigger",
     "AOEPattern",
+    "ComponentType",
     "UNIT_CLASS_NAMES",
     "TERRAIN_NAMES",
     "AOE_PATTERN_NAMES",
+    "COMPONENT_TYPE_NAMES",
     "BaseInfo",
     "UnitClassInfo",
     "UNIT_CLASS_DATA",

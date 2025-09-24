@@ -4,10 +4,10 @@ This module contains the concrete component implementations for the Grimdark SRP
 including the 5 core unit components: Actor, Health, Movement, Combat, and Status.
 """
 
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 from ...core.entities import Component
-from ...core.data import UnitClass, Team, UNIT_CLASS_NAMES, UNIT_CLASS_DATA, Vector2, AOEPattern
+from ...core.data import UnitClass, Team, UNIT_CLASS_NAMES, UNIT_CLASS_DATA, Vector2, AOEPattern, ComponentType
 from ...core.wounds import WoundEffect
 
 if TYPE_CHECKING:
@@ -42,9 +42,9 @@ class ActorComponent(Component):
         self.unit_class = unit_class
         self.team = team
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Actor"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.ACTOR
     
     def get_display_name(self) -> str:
         """Get the display name for this unit."""
@@ -92,9 +92,9 @@ class HealthComponent(Component):
         self.hp_max = hp_max
         self.hp_current = hp_max  # Start at full health
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Health"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.HEALTH
     
     def is_alive(self) -> bool:
         """Check if the unit is alive.
@@ -185,9 +185,9 @@ class MovementComponent(Component):
         self.facing = "south"  # Default facing direction
         self.movement_points = movement_points
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Movement"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.MOVEMENT
     
     def get_position(self) -> Vector2:
         """Get the current position vector.
@@ -280,9 +280,9 @@ class CombatComponent(Component):
         self.attack_range_max = attack_range_max
         self.aoe_pattern = aoe_pattern
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Combat"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.COMBAT
     
     def calculate_damage_to(self, target_combat: "CombatComponent") -> int:
         """Calculate damage this unit would deal to a target.
@@ -297,27 +297,6 @@ class CombatComponent(Component):
         mitigation = target_combat.defense
         return max(1, base_damage - mitigation)
     
-    def can_attack(self, target: Vector2) -> bool:
-        """Check if this unit can attack a position based on range.
-        
-        Args:
-            target: Target position vector
-            
-        Returns:
-            True if position is within attack range, False otherwise
-        """
-        # Get position from movement component
-        movement_component = self.entity.get_component("Movement")
-        if movement_component is None:
-            return False
-        
-        # Cast to MovementComponent to access position attribute
-        movement = cast('MovementComponent', movement_component)
-        
-        # Calculate Manhattan distance
-        distance = movement.position.manhattan_distance_to(target)
-        
-        return self.attack_range_min <= distance <= self.attack_range_max
     
     def get_attack_range(self) -> tuple[int, int]:
         """Get the attack range as a tuple.
@@ -348,42 +327,24 @@ class StatusComponent(Component):
         self.has_moved = False
         self.has_acted = False
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Status"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.STATUS
     
     def can_move(self) -> bool:
         """Check if the unit can move this turn.
         
         Returns:
-            True if unit is alive and hasn't moved yet, False otherwise
+            True if unit hasn't moved yet, False otherwise
         """
-        # Check if unit is alive
-        health_component = self.entity.get_component("Health")
-        if health_component is None:
-            return False
-        
-        health = cast('HealthComponent', health_component)
-        if not health.is_alive():
-            return False
-        
         return not self.has_moved
     
     def can_act(self) -> bool:
         """Check if the unit can perform an action this turn.
         
         Returns:
-            True if unit is alive and hasn't acted yet, False otherwise
+            True if unit hasn't acted yet, False otherwise
         """
-        # Check if unit is alive
-        health_component = self.entity.get_component("Health")
-        if health_component is None:
-            return False
-        
-        health = cast('HealthComponent', health_component)
-        if not health.is_alive():
-            return False
-        
         return not self.has_acted
     
     def mark_moved(self) -> None:
@@ -432,9 +393,9 @@ class InterruptComponent(Component):
         self.prepared_actions: list["PreparedAction"] = []
         self.max_prepared_actions = 1  # Limit to prevent complexity overload
         
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Interrupt"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.INTERRUPT
     
     def can_prepare_action(self) -> bool:
         """Check if the unit can prepare another action.
@@ -552,9 +513,9 @@ class MoraleComponent(Component):
         # Morale modifiers
         self.temporary_modifiers = {}  # str -> int (modifier_name -> value)
         
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Morale"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.MORALE
     
     def get_effective_morale(self) -> int:
         """Get current morale including all modifiers.
@@ -764,9 +725,9 @@ class WoundComponent(Component):
         self.active_wounds: list[Wound] = []
         self.permanent_scars: list[Wound] = []
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "Wound"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.WOUND
     
     def add_wound(self, wound: "Wound") -> None:
         """Add a new wound to the unit.
@@ -903,9 +864,9 @@ class AIComponent(Component):
         self.behavior: AIBehavior = ai_behavior
         self.memory: dict = {}  # For learning and adaptation in future
     
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
-        return "AI"
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
+        return ComponentType.AI
     
     def make_decision(self, game_map: "GameMap", timeline: "Timeline") -> "AIDecision":
         """Make a decision for the current turn.

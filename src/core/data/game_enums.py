@@ -98,6 +98,23 @@ class AOEPattern(Enum):
     LINE_VERTICAL = "line_vertical"      # 5-tile vertical line
 
 
+class ComponentType(Enum):
+    """Component types for the entity component system.
+    
+    Used for type-safe component access and storage in entities,
+    replacing string-based component lookups.
+    """
+    ACTOR = auto()
+    HEALTH = auto()
+    MOVEMENT = auto()
+    COMBAT = auto()
+    STATUS = auto()
+    MORALE = auto()
+    WOUND = auto()
+    INTERRUPT = auto()
+    AI = auto()
+
+
 # Convenience mappings for backward compatibility and easy access
 TEAM_NAMES = {
     Team.PLAYER: "Player",
@@ -154,4 +171,16 @@ AOE_PATTERN_NAMES = {
     AOEPattern.DIAMOND: "Diamond Area",
     AOEPattern.LINE_HORIZONTAL: "Horizontal Line",
     AOEPattern.LINE_VERTICAL: "Vertical Line"
+}
+
+COMPONENT_TYPE_NAMES = {
+    ComponentType.ACTOR: "Actor",
+    ComponentType.HEALTH: "Health",
+    ComponentType.MOVEMENT: "Movement",
+    ComponentType.COMBAT: "Combat",
+    ComponentType.STATUS: "Status",
+    ComponentType.MORALE: "Morale",
+    ComponentType.WOUND: "Wound",
+    ComponentType.INTERRUPT: "Interrupt",
+    ComponentType.AI: "AI"
 }

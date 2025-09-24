@@ -4,16 +4,15 @@ This manager implements the grimdark principle that battles become more dangerou
 over time, punishing players who take too long and forcing difficult tactical decisions.
 """
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from ...core.data import Vector2
+from ...core.data import Vector2, ComponentType
 from ...core.events import (
     LogMessage, EventType, TurnStarted, UnitDefeated
 )
 from .log_manager import LogLevel
-from ..entities.components import MoraleComponent
 
 if TYPE_CHECKING:
     from ...core.entities.components import Entity
@@ -387,10 +386,8 @@ class EscalationManager:
         
         # Apply to all units (or specific teams)
         for unit in self.game_map.units:
-            morale_component = unit.entity.get_component("Morale")
-            if morale_component:
-                morale = cast(MoraleComponent, morale_component)
-                morale.modify_morale(morale_penalty, "prolonged_battle")
+            if unit.has_component(ComponentType.MORALE):
+                unit.morale.modify_morale(morale_penalty, "prolonged_battle")
     
     def _spawn_reinforcements(self, event: EscalationEvent) -> None:
         """Spawn reinforcement units based on event configuration.

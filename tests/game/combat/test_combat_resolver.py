@@ -442,8 +442,8 @@ class TestMoraleIntegration:
         # Should call morale manager for damage (only if not friendly fire)
         mock_morale_manager.process_unit_damage.assert_called_once()
         call_args = mock_morale_manager.process_unit_damage.call_args[0]
-        assert call_args[0] == target.entity  # target entity
-        assert call_args[2] == attacker.entity  # attacker entity
+        assert call_args[0] == target  # target unit
+        assert call_args[2] == attacker  # attacker unit
         
     def test_morale_death_processing(self, resolver, mock_morale_manager):
         """Test that morale manager processes unit deaths."""
@@ -458,8 +458,8 @@ class TestMoraleIntegration:
         mock_morale_manager.process_unit_death.assert_called_once()
         
         call_args = mock_morale_manager.process_unit_death.call_args[0]
-        assert call_args[0] == weak_target.entity  # target entity
-        assert call_args[1] == attacker.entity  # attacker entity
+        assert call_args[0] == weak_target  # target unit
+        assert call_args[1] == attacker  # attacker unit
 
 
 class TestEventHandling:

@@ -16,7 +16,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable, Optional, cast
+from typing import TYPE_CHECKING, Any, Callable, Optional
 
 if TYPE_CHECKING:
     from ...game.entities.unit import Unit
@@ -483,11 +483,9 @@ class ChargeAttack(Action):
 
         if event_emitter and hasattr(target, "unit_id"):
             # Emit UnitAttacked event for proper combat resolution
-            # actor.entity is the Unit that owns this ActorComponent
-            attacker_unit = cast("Unit", actor.entity)
             attack_event = UnitAttacked(
                 timeline_time=0,  # Timeline manager will fill in correct time
-                attacker=attacker_unit,
+                attacker=actor,  # actor is already a Unit
                 target=target,
                 base_damage=base_damage,
                 damage_multiplier=1.3,  # 130% damage

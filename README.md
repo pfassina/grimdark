@@ -29,8 +29,10 @@ The system uses an **event-driven architecture** with timeline-based combat flow
 - **Loose Coupling**: Each manager only knows EventManager and GameState
 - **Event Types**: Timeline, Combat, Input, UI, System events with rich payloads
 
-### Component-Based Units
-- **ECS-like Design**: Units have modular components (Health, Movement, Combat, Morale, Wounds)
+### Hybrid Component System
+- **Type-Safe ECS**: Entity-Component System with ComponentType enum for robust component identification
+- **Unit Wrapper**: High-level interface providing clean property access (unit.hp_current) and component access (unit.health.heal())
+- **Dynamic Components**: Core components (Actor, Health, Movement, Combat, Status) plus optional components (Morale, Wound, Interrupt, AI)
 - **Vector2 Positioning**: Modern spatial operations with vectorized calculations
 - **Status Effects**: Wounds, morale states, and environmental effects affect gameplay
 
@@ -41,6 +43,12 @@ The system uses an **event-driven architecture** with timeline-based combat flow
 - **Damage Variance**: ±25% variance for unpredictability without extremes
 - **Wound Generation**: Damage creates persistent injuries with body part targeting
 - **Morale Integration**: Combat damage affects unit psychological state
+
+### Action Validation System
+- **Unified Validation**: All actions (player and AI) use same validation logic through Action classes
+- **Type-Safe Actions**: Actions work with Unit objects directly for consistent behavior
+- **Component Separation**: Components manage state, Actions handle complex validation and execution
+- **Consistent Behavior**: Same rules apply to both human players and AI decision-making
 
 ### Morale & Psychology (WIP)
 - **Individual Morale**: Each unit has base morale (0-150) with situational modifiers
@@ -93,8 +101,8 @@ The system uses an **event-driven architecture** with timeline-based combat flow
 
 ### Map and Content (`src/game/`)
 - **`map.py`**: Grid-based battlefield with vectorized operations and pathfinding
-- **`unit.py`**: Component-based units with Vector2 positioning
-- **`components.py`**: ECS-like components (Actor, Health, Movement, Combat, Morale, Wound)
+- **`unit.py`**: Hybrid Unit wrapper with type-safe component access and clean property interface
+- **`components.py`**: Type-safe ECS components using ComponentType enum (Actor, Health, Movement, Combat, Morale, Wound, Interrupt)
 - **`scenario_loader.py`**: YAML scenario parsing and game state initialization
 
 ### Renderers (`src/renderers/`)

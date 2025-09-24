@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Optional, Any
 from enum import Enum, auto
 
+from ...core.engine.actions import StandardAttack
+
 
 if TYPE_CHECKING:
     from ..entities.unit import Unit
@@ -82,8 +84,11 @@ class AggressiveAI(AIBehavior):
                 reasoning="No enemies found on battlefield"
             )
         
-        # Check if we can attack the closest enemy
-        if unit.can_attack(closest_enemy.position):
+        # Check if we can attack the closest enemy using proper Action validation
+        attack_action = StandardAttack()
+        attack_validation = attack_action.validate(unit, game_map, closest_enemy.position)
+        
+        if attack_validation.is_valid:
             return AIDecision(
                 action_name="Attack",
                 target=closest_enemy.position,  # Pass the position (Vector2) as expected by AttackAction

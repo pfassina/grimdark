@@ -122,7 +122,7 @@ The system uses an **event-driven architecture** with timeline-based combat flow
 
 - **Event-Driven Communication**: All managers communicate through EventManager, never direct dependencies
 - **Timeline-Based Combat**: Action weights determine when units act next, creating tactical depth through time management
-- **Component-Based Units**: ECS-like system with modular components (Health, Movement, Combat, Morale, Wounds)
+- **Hybrid Component System**: ECS with type-safe Unit wrapper providing clean property access and component management
 - **Push-Based Rendering**: Game builds render contexts, renderers display them independently
 - **Single Source of Truth**: GameState holds all persistent data, EventManager coordinates behavior
 
@@ -157,7 +157,7 @@ The system uses an **event-driven architecture** with timeline-based combat flow
      - `renderable.py` - Data classes for renderable entities (NO game logic)
    - **Data** (`src/core/data/`)
      - `data_structures.py` - Vector2 and VectorArray for efficient spatial operations
-     - `game_enums.py` - Centralized enums for teams, unit classes, terrain types
+     - `game_enums.py` - Centralized enums for teams, unit classes, terrain types, and ComponentType for type-safe ECS
      - `game_info.py` - Static game data and lookup tables
    - **Other** (remaining in core root)
      - `renderer.py` - Abstract base class all renderers must implement
@@ -192,8 +192,8 @@ The system uses an **event-driven architecture** with timeline-based combat flow
      - `ai_controller.py` - Timeline-aware AI with personality types and tactical assessment
      - `ai_behaviors.py` - AI behavior patterns and decision-making logic
    - **Entities** (`src/game/entities/`)
-     - `unit.py` - Component-based units with Vector2 positioning
-     - `components.py` - Game-specific components (Actor, Health, Movement, Combat, Morale, Wound, Interrupt)
+     - `unit.py` - Hybrid Unit wrapper with type-safe component access and clean property interface
+     - `components.py` - Type-safe ECS components using ComponentType enum (Actor, Health, Movement, Combat, Morale, Wound, Interrupt)
      - `unit_templates.py` - Unit class definitions and base stats
      - `map_objects.py` - Interactive map objects and environmental elements
    - **Scenarios** (`src/game/scenarios/`)
@@ -255,6 +255,7 @@ GameState       Event Routing   Event Subscriptions
    - Fix ALL type errors, undefined variables, and import issues
    - Use proper type annotations and Optional types
    - Resolve circular imports with TYPE_CHECKING pattern
+   - Use ComponentType enum for type-safe component access
    - **No exceptions**: Every type error must be resolved
 
 2. **Run ruff for linting and style**:
@@ -342,10 +343,83 @@ GameState       Event Routing   Event Subscriptions
 
 ### **Component-Based Development**
 
-- **Wound Component**: Persistent injuries affecting unit performance
-- **Morale Component**: Psychological state affecting combat effectiveness
-- **Interrupt Component**: Prepared actions and reaction capabilities
-- **Status Component**: Temporary buffs/debuffs and environmental effects
+The game uses a hybrid Entity-Component System with a clean Unit wrapper for type-safe access:
+
+#### **Component Architecture**
+- **ComponentType Enum**: Type-safe component identification replacing string-based access
+- **Entity + Components**: Core ECS with Actor, Health, Movement, Combat, Status components
+- **Unit Wrapper**: High-level interface providing both direct properties and component access
+- **Optional Components**: Morale, Wound, Interrupt, AI components for extended functionality
+
+#### **Unit Access Patterns**
+```python
+# Direct property access (most frequent operations)
+unit.x = 5                    # Position access
+unit.hp_current = 20          # Health access
+if unit.is_alive and unit.can_move:  # Status checks
+    # Perform action
+
+# Component access (less frequent operations)
+unit.combat.strength = 10     # Combat stats
+unit.health.hp_max = 25       # Health configuration
+unit.actor.unit_class         # Unit classification
+unit.morale.modify_morale(-5, "fear")  # Optional components
+```
+
+#### **Component Management**
+```python
+# Adding optional components dynamically
+morale_comp = MoraleComponent(unit.entity)
+unit.add_component(morale_comp)
+
+# Type-safe component checking
+if unit.has_component(ComponentType.MORALE):
+    unit.morale.modify_morale(5, "victory")
+
+# Component removal
+unit.remove_component(ComponentType.WOUND)
+```
+
+#### **Key Components**
+- **Actor Component**: Identity, team affiliation, unit class information
+- **Health Component**: HP management, life/death state, damage tracking
+- **Movement Component**: Position, facing, movement points, mobility
+- **Combat Component**: Attack/defense stats, damage calculation, range validation
+- **Status Component**: Turn state, action availability, temporary effects
+- **Morale Component**: Psychological state affecting combat effectiveness (optional)
+- **Wound Component**: Persistent injuries affecting unit performance (optional)
+- **Interrupt Component**: Prepared actions and reaction capabilities (optional)
+- **AI Component**: Behavior patterns and decision-making logic (optional)
+
+### **Action Validation System**
+
+The game uses a unified validation system through Action classes for consistent behavior:
+
+#### **Validation Architecture**
+- **Single Validation Path**: All attack/action validation goes through Action classes, not component methods
+- **Action.validate()**: Returns ActionValidation with detailed validation results
+- **Consistent Logic**: Same validation used by both player input and AI decision-making
+- **Type Safety**: Actions use Unit objects directly, not Entity references
+
+#### **Validation Examples**
+```python
+# AI decision making (unified with player actions)
+attack_action = StandardAttack()
+validation = attack_action.validate(unit, game_map, target_position)
+if validation.is_valid:
+    # Execute attack
+    result = attack_action.execute(unit, target_position, game_map)
+
+# Component separation of concerns
+# ❌ Old approach: unit.combat.can_attack(target) - mixed health/status checks
+# ✅ New approach: Action handles all validation logic consistently
+```
+
+#### **Component Responsibilities**
+- **Components**: Manage their own state and properties only
+- **Actions**: Handle complex validation logic and cross-component coordination
+- **Unit Class**: Provides convenient property access and basic status queries
+- **Managers**: Use Action validation for consistent behavior across systems
 
 ### **Manager Integration**
 

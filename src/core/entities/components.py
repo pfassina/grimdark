@@ -9,6 +9,8 @@ from abc import ABC, abstractmethod
 from typing import Optional, TYPE_CHECKING
 import uuid
 
+from ..data.game_enums import ComponentType
+
 if TYPE_CHECKING:
     pass
 
@@ -30,8 +32,8 @@ class Component(ABC):
         self.entity = entity
     
     @abstractmethod
-    def get_component_name(self) -> str:
-        """Get the name identifier for this component type."""
+    def get_component_type(self) -> ComponentType:
+        """Get the type identifier for this component."""
         pass
 
 
@@ -46,7 +48,7 @@ class Entity:
     def __init__(self):
         """Initialize entity with unique ID and empty component collection."""
         self.entity_id: str = str(uuid.uuid4())
-        self.components: dict[str, Component] = {}
+        self.components: dict[ComponentType, Component] = {}
     
     def add_component(self, component: Component) -> None:
         """Add a component to this entity.
@@ -57,28 +59,28 @@ class Entity:
         Raises:
             ValueError: If a component of this type already exists
         """
-        component_name = component.get_component_name()
-        if component_name in self.components:
-            raise ValueError(f"Entity already has component: {component_name}")
+        component_type = component.get_component_type()
+        if component_type in self.components:
+            raise ValueError(f"Entity already has component: {component_type}")
         
-        self.components[component_name] = component
+        self.components[component_type] = component
     
-    def get_component(self, component_name: str) -> Optional[Component]:
-        """Get a component by name.
+    def get_component(self, component_type: ComponentType) -> Optional[Component]:
+        """Get a component by type.
         
         Args:
-            component_name: Name of the component to retrieve
+            component_type: Type of the component to retrieve
             
         Returns:
             The component if it exists, None otherwise
         """
-        return self.components.get(component_name)
+        return self.components.get(component_type)
     
-    def require_component(self, component_name: str) -> Component:
-        """Get a component by name, raising an error if it doesn't exist.
+    def require_component(self, component_type: ComponentType) -> Component:
+        """Get a component by type, raising an error if it doesn't exist.
         
         Args:
-            component_name: Name of the component to retrieve
+            component_type: Type of the component to retrieve
             
         Returns:
             The component
@@ -86,38 +88,38 @@ class Entity:
         Raises:
             ValueError: If the component doesn't exist
         """
-        component = self.components.get(component_name)
+        component = self.components.get(component_type)
         if component is None:
-            raise ValueError(f"Entity missing required component: {component_name}")
+            raise ValueError(f"Entity missing required component: {component_type}")
         return component
     
-    def has_component(self, component_name: str) -> bool:
+    def has_component(self, component_type: ComponentType) -> bool:
         """Check if this entity has a specific component.
         
         Args:
-            component_name: Name of the component to check for
+            component_type: Type of the component to check for
             
         Returns:
             True if the component exists, False otherwise
         """
-        return component_name in self.components
+        return component_type in self.components
     
-    def remove_component(self, component_name: str) -> Optional[Component]:
+    def remove_component(self, component_type: ComponentType) -> Optional[Component]:
         """Remove a component from this entity.
         
         Args:
-            component_name: Name of the component to remove
+            component_type: Type of the component to remove
             
         Returns:
             The removed component if it existed, None otherwise
         """
-        return self.components.pop(component_name, None)
+        return self.components.pop(component_type, None)
     
-    def get_all_components(self) -> dict[str, Component]:
+    def get_all_components(self) -> dict[ComponentType, Component]:
         """Get all components on this entity.
         
         Returns:
-            Dictionary of component_name -> component
+            Dictionary of component_type -> component
         """
         return self.components.copy()
 
@@ -130,16 +132,16 @@ class ComponentError(Exception):
 class MissingComponentError(ComponentError):
     """Raised when trying to access a component that doesn't exist."""
     
-    def __init__(self, entity_id: str, component_name: str):
-        super().__init__(f"Entity {entity_id} missing component: {component_name}")
+    def __init__(self, entity_id: str, component_type: ComponentType):
+        super().__init__(f"Entity {entity_id} missing component: {component_type}")
         self.entity_id = entity_id
-        self.component_name = component_name
+        self.component_type = component_type
 
 
 class DuplicateComponentError(ComponentError):
     """Raised when trying to add a component that already exists."""
     
-    def __init__(self, entity_id: str, component_name: str):
-        super().__init__(f"Entity {entity_id} already has component: {component_name}")
+    def __init__(self, entity_id: str, component_type: ComponentType):
+        super().__init__(f"Entity {entity_id} already has component: {component_type}")
         self.entity_id = entity_id
-        self.component_name = component_name
+        self.component_type = component_type

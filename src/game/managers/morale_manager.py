@@ -5,22 +5,21 @@ and integration with the combat system. It implements the grimdark principle
 that battles are as much about breaking the enemy's will as their bodies.
 """
 
-from typing import TYPE_CHECKING, Optional, cast
+from typing import TYPE_CHECKING, Optional
 
 from ...core.events import (
     MoraleChanged, UnitPanicked, UnitRouted, UnitRallied,
     UnitDamaged, UnitDefeated, BattlePhaseChanged, LogMessage,
     EventType, GameEvent
 )
-from ...core.data import Vector2, PanicTrigger
-from ..entities.components import MoraleComponent, ActorComponent, MovementComponent
+from ...core.data import Vector2, PanicTrigger, ComponentType
 from .log_manager import LogLevel
 
 if TYPE_CHECKING:
-    from ...core.entities.components import Entity
     from ...core.engine.game_state import GameState
     from ...core.events.event_manager import EventManager
     from ..map import GameMap
+    from ..entities.unit import Unit
 
 
 class MoraleManager:
@@ -92,34 +91,30 @@ class MoraleManager:
         # The event already has the unit that took damage
         unit = event.unit
         # Process morale effects from damage
-        self.process_unit_damage(unit.entity, event.damage)
+        self.process_unit_damage(unit, event.damage)
     
     def _on_unit_defeated(self, event: GameEvent) -> None:
         """Handle unit defeated event for morale processing."""
         assert isinstance(event, UnitDefeated), f"Expected UnitDefeated, got {type(event)}"
         # Process morale effects from death using the unit directly from the event
-        self.process_unit_death(event.unit.entity)
+        self.process_unit_death(event.unit)
     
     def _on_battle_phase_changed(self, event: GameEvent) -> None:
         """Handle battle phase change for morale processing."""
         assert isinstance(event, BattlePhaseChanged), f"Expected BattlePhaseChanged, got {type(event)}"
         # Update all units' proximity modifiers when phase changes
         for unit in self.game_map.units:
-            self._update_proximity_modifiers(unit.entity)
+            self._update_proximity_modifiers(unit)
         
-    def process_unit_damage(self, entity: "Entity", damage: int, attacker: Optional["Entity"] = None) -> None:
+    def process_unit_damage(self, unit: "Unit", damage: int, attacker: Optional["Unit"] = None) -> None:
         """Process morale effects when a unit takes damage.
         
         Args:
-            entity: Unit that took damage
+            unit: Unit that took damage
             damage: Amount of damage taken
-            attacker: Optional entity that dealt the damage
+            attacker: Optional unit that dealt the damage
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
-            return
-            
-        morale = cast(MoraleComponent, morale_component)
+        morale = unit.morale
         
         # Calculate morale loss from damage
         morale_loss = int(damage * self.damage_morale_ratio)
@@ -129,39 +124,28 @@ class MoraleManager:
             
             # Emit morale changed event if significant
             if abs(actual_change) >= 5:
-                self._emit_morale_event(entity, old_morale, morale.get_effective_morale())
+                self._emit_morale_event(unit, old_morale, morale.get_effective_morale())
         
         # Heavy damage triggers additional panic checks
         if damage >= 15:  # Heavy damage threshold
-            self._check_heavy_damage_panic(entity, damage)
+            self._check_heavy_damage_panic(unit, damage)
     
-    def process_unit_death(self, deceased: "Entity", killer: Optional["Entity"] = None) -> None:
+    def process_unit_death(self, deceased: "Unit", killer: Optional["Unit"] = None) -> None:
         """Process morale effects when a unit dies.
         
         Args:
             deceased: Unit that was killed
-            killer: Optional entity that killed the unit
+            killer: Optional unit that killed the unit
         """
-        deceased_actor_component = deceased.get_component("Actor")
-        deceased_position = self._get_entity_position(deceased)
-        
-        if not deceased_actor_component or not deceased_position:
-            return
-        
-        deceased_actor = cast(ActorComponent, deceased_actor_component)
+        deceased_actor = deceased.actor
+        deceased_position = deceased.position
             
         # Find all units within proximity radius
         nearby_units = self._get_units_in_range(deceased_position, self.proximity_radius)
         
         for unit in nearby_units:
-            unit_actor = unit.get_component("Actor")
-            unit_morale = unit.get_component("Morale")
-            
-            if not unit_actor or not unit_morale:
-                continue
-                
-            actor = cast(ActorComponent, unit_actor)
-            morale = cast(MoraleComponent, unit_morale)
+            actor = unit.actor
+            morale = unit.morale
                 
             # Skip if this is the unit that died
             if unit == deceased:
@@ -195,91 +179,81 @@ class MoraleManager:
         
         # Process ongoing morale effects for all units
         for unit in self.game_map.units:
-            morale_component = unit.entity.get_component("Morale")
-            if morale_component:
-                morale = cast(MoraleComponent, morale_component)
-                morale.process_turn_effects()
+            if unit.has_component(ComponentType.MORALE):
+                unit.morale.process_turn_effects()
                 
                 # Update proximity-based morale modifiers
-                self._update_proximity_modifiers(unit.entity)
+                self._update_proximity_modifiers(unit)
     
-    def attempt_rally_unit(self, entity: "Entity", rallier: Optional["Entity"] = None) -> bool:
+    def attempt_rally_unit(self, unit: "Unit", rallier: Optional["Unit"] = None) -> bool:
         """Attempt to rally a unit out of panic.
         
         Args:
-            entity: Unit to attempt rallying
+            unit: Unit to attempt rallying
             rallier: Optional unit performing the rally (affects bonus)
             
         Returns:
             True if rally was successful
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
+        if not unit.has_component(ComponentType.MORALE):
             return False
             
-        morale = cast(MoraleComponent, morale_component)
+        morale = unit.morale
         
         # Calculate rally bonus based on rallier
         rally_bonus = 15  # Base rally bonus
         if rallier:
-            rallier_actor = rallier.get_component("Actor")
-            if rallier_actor:
-                actor = cast('ActorComponent', rallier_actor)
-                # Leaders and priests get bonus to rallying
-                if actor.unit_class.name in ["PRIEST", "KNIGHT"]:
-                    rally_bonus += 10
+            rallier_actor = rallier.actor
+            # Leaders and priests get bonus to rallying
+            if rallier_actor.unit_class.name in ["PRIEST", "KNIGHT"]:
+                rally_bonus += 10
         
         success = morale.attempt_rally(self.current_turn, rally_bonus)
         
         if success:
-            self._emit_rally_event(entity)
+            self._emit_rally_event(unit)
         
         return success
     
-    def get_morale_combat_modifiers(self, entity: "Entity") -> dict[str, int]:
+    def get_morale_combat_modifiers(self, unit: "Unit") -> dict[str, int]:
         """Get combat modifiers due to morale state.
         
         Args:
-            entity: Unit to get modifiers for
+            unit: Unit to get modifiers for
             
         Returns:
             Dictionary of modifier types and values
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
+        if not unit.has_component(ComponentType.MORALE):
             return {}
             
-        morale = cast(MoraleComponent, morale_component)
-        return morale.get_combat_penalties()
+        return unit.morale.get_combat_penalties()
     
-    def should_unit_flee(self, entity: "Entity") -> bool:
+    def should_unit_flee(self, unit: "Unit") -> bool:
         """Check if a unit should attempt to flee from combat.
         
         Args:
-            entity: Unit to check
+            unit: Unit to check
             
         Returns:
             True if unit should flee
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
+        if not unit.has_component(ComponentType.MORALE):
             return False
             
-        morale = cast(MoraleComponent, morale_component)
-        return morale.should_flee_from_combat()
+        return unit.morale.should_flee_from_combat()
     
-    def _check_heavy_damage_panic(self, entity: "Entity", damage: int) -> None:
+    def _check_heavy_damage_panic(self, unit: "Unit", damage: int) -> None:
         """Check if heavy damage triggers panic.
         
         Args:
-            entity: Unit that took heavy damage
+            unit: Unit that took heavy damage
             damage: Amount of damage taken
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
+        if not unit.has_component(ComponentType.MORALE):
             return
             
-        morale = cast(MoraleComponent, morale_component)
+        morale = unit.morale
         
         # Heavy damage can trigger immediate panic regardless of current morale
         if damage >= 20 and not morale.is_panicked:
@@ -288,63 +262,55 @@ class MoraleManager:
             morale.modify_morale(trauma_penalty, "traumatic_damage")
             
             if morale.get_effective_morale() <= morale.panic_threshold + 10:
-                self._trigger_panic(entity, "heavy_damage")
+                self._trigger_panic(unit, "heavy_damage")
     
-    def _trigger_panic(self, entity: "Entity", reason: str) -> None:
+    def _trigger_panic(self, unit: "Unit", reason: str) -> None:
         """Trigger panic state for a unit.
         
         Args:
-            entity: Unit to panic
+            unit: Unit to panic
             reason: Reason for panic
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
+        if not unit.has_component(ComponentType.MORALE):
             return
             
-        morale = cast(MoraleComponent, morale_component)
+        morale = unit.morale
         
         if not morale.is_panicked:
             morale.enter_panic_state(reason)
-            self._emit_panic_event(entity, reason)
+            self._emit_panic_event(unit, reason)
             
             # Check for immediate rout
             if morale.get_effective_morale() <= morale.rout_threshold:
-                self._trigger_rout(entity)
+                self._trigger_rout(unit)
     
-    def _trigger_rout(self, entity: "Entity") -> None:
+    def _trigger_rout(self, unit: "Unit") -> None:
         """Trigger rout state for a unit.
         
         Args:
-            entity: Unit to rout
+            unit: Unit to rout
         """
-        morale_component = entity.get_component("Morale")
-        if not morale_component:
+        if not unit.has_component(ComponentType.MORALE):
             return
             
-        morale = cast(MoraleComponent, morale_component)
+        morale = unit.morale
         
         if not morale.is_routed:
             morale.enter_rout_state()
-            self._emit_rout_event(entity)
+            self._emit_rout_event(unit)
     
-    def _update_proximity_modifiers(self, entity: "Entity") -> None:
+    def _update_proximity_modifiers(self, unit: "Unit") -> None:
         """Update morale modifiers based on nearby units.
         
         Args:
-            entity: Unit to update modifiers for
+            unit: Unit to update modifiers for
         """
-        morale_component = entity.get_component("Morale")
-        actor_component = entity.get_component("Actor")
-        
-        if not morale_component or not actor_component:
+        if not unit.has_component(ComponentType.MORALE):
             return
             
-        morale = cast(MoraleComponent, morale_component)
-        actor = cast('ActorComponent', actor_component)
-        
-        position = self._get_entity_position(entity)
-        if not position:
-            return
+        morale = unit.morale
+        actor = unit.actor
+        position = unit.position
         
         # Clear old proximity modifiers
         morale.remove_temporary_modifier("nearby_allies")
@@ -356,11 +322,10 @@ class MoraleManager:
         ally_count = 0
         enemy_count = 0
         
-        for unit in nearby_units:
-            unit_actor = unit.get_component("Actor")
-            if unit_actor and unit != entity:
-                unit_actor_cast = cast('ActorComponent', unit_actor)
-                if actor.is_ally_of(unit_actor_cast):
+        for nearby_unit in nearby_units:
+            if nearby_unit != unit and nearby_unit.has_component(ComponentType.ACTOR):
+                nearby_actor = nearby_unit.actor
+                if actor.is_ally_of(nearby_actor):
                     ally_count += 1
                 else:
                     enemy_count += 1
@@ -375,23 +340,8 @@ class MoraleManager:
         if enemy_count >= 3 and ally_count == 0:
             morale.add_temporary_modifier("surrounded", -10)
     
-    def _get_entity_position(self, entity: "Entity") -> Optional[Vector2]:
-        """Get position of an entity.
-        
-        Args:
-            entity: Entity to get position for
-            
-        Returns:
-            Position vector or None if not found
-        """
-        movement_component = entity.get_component("Movement")
-        if not movement_component:
-            return None
-            
-        movement = cast('MovementComponent', movement_component)
-        return movement.get_position()
     
-    def _get_units_in_range(self, center: Vector2, radius: int) -> list["Entity"]:
+    def _get_units_in_range(self, center: Vector2, radius: int) -> list["Unit"]:
         """Get all units within range of a position.
         
         Args:
@@ -399,121 +349,89 @@ class MoraleManager:
             radius: Search radius (Manhattan distance)
             
         Returns:
-            List of entities within range
+            List of units within range
         """
         units_in_range = []
         
         for unit in self.game_map.units:
             position = unit.position  # Unit objects have direct position access
             if position.manhattan_distance_to(center) <= radius:
-                units_in_range.append(unit.entity)  # Return the entity for component access
+                units_in_range.append(unit)  # Return the unit directly
         
         return units_in_range
     
-    def _emit_morale_event(self, entity: "Entity", old_morale: int, new_morale: int) -> None:
+    def _emit_morale_event(self, unit: "Unit", old_morale: int, new_morale: int) -> None:
         """Emit morale changed event.
         
         Args:
-            entity: Entity whose morale changed
+            unit: Unit whose morale changed
             old_morale: Previous morale value
             new_morale: New morale value
         """
         
-        # Find the unit that corresponds to this entity
-        unit = None
-        for map_unit in self.game_map.units:
-            if map_unit.entity is entity:
-                unit = map_unit
-                break
-        
-        if unit:
-            event = MoraleChanged(
-                timeline_time=self.game_state.battle.timeline.current_time,
-                unit=unit,
-                old_morale=old_morale,
-                new_morale=new_morale
-            )
-            self.event_manager.publish(event, source="MoraleManager")
+        event = MoraleChanged(
+            timeline_time=self.game_state.battle.timeline.current_time,
+            unit=unit,
+            old_morale=old_morale,
+            new_morale=new_morale
+        )
+        self.event_manager.publish(event, source="MoraleManager")
     
-    def _emit_panic_event(self, entity: "Entity", reason: str) -> None:
+    def _emit_panic_event(self, unit: "Unit", reason: str) -> None:
         """Emit unit panicked event.
         
         Args:
-            entity: Entity that panicked
+            unit: Unit that panicked
             reason: Reason for panic
         """
         
-        # Find the unit that corresponds to this entity
-        unit = None
-        for map_unit in self.game_map.units:
-            if map_unit.entity is entity:
-                unit = map_unit
-                break
+        # Map reason string to PanicTrigger enum
+        trigger_map = {
+            "low morale": PanicTrigger.LOW_MORALE,
+            "ally death": PanicTrigger.ALLY_DEATH,
+            "heavy damage": PanicTrigger.HEAVY_DAMAGE,
+            "overwhelming odds": PanicTrigger.OVERWHELMING_ODDS
+        }
+        trigger = trigger_map.get(reason.lower(), PanicTrigger.LOW_MORALE)
         
-        if unit:
-            # Map reason string to PanicTrigger enum
-            trigger_map = {
-                "low morale": PanicTrigger.LOW_MORALE,
-                "ally death": PanicTrigger.ALLY_DEATH,
-                "heavy damage": PanicTrigger.HEAVY_DAMAGE,
-                "overwhelming odds": PanicTrigger.OVERWHELMING_ODDS
-            }
-            trigger = trigger_map.get(reason.lower(), PanicTrigger.LOW_MORALE)
-            
-            event = UnitPanicked(
-                timeline_time=self.game_state.battle.timeline.current_time,
-                unit=unit,
-                trigger=trigger
-            )
-            self.event_manager.publish(event, source="MoraleManager")
-            
-            # Log the panic event
-            self._emit_log(f"{unit.name}: Panicked ({reason})", "BATTLE")
+        event = UnitPanicked(
+            timeline_time=self.game_state.battle.timeline.current_time,
+            unit=unit,
+            trigger=trigger
+        )
+        self.event_manager.publish(event, source="MoraleManager")
+        
+        # Log the panic event
+        self._emit_log(f"{unit.name}: Panicked ({reason})", "BATTLE")
     
-    def _emit_rout_event(self, entity: "Entity") -> None:
+    def _emit_rout_event(self, unit: "Unit") -> None:
         """Emit unit routed event.
         
         Args:
-            entity: Entity that routed
+            unit: Unit that routed
         """
         
-        # Find the unit that corresponds to this entity
-        unit = None
-        for map_unit in self.game_map.units:
-            if map_unit.entity is entity:
-                unit = map_unit
-                break
+        event = UnitRouted(
+            timeline_time=self.game_state.battle.timeline.current_time,
+            unit=unit
+        )
+        self.event_manager.publish(event, source="MoraleManager")
         
-        if unit:
-            event = UnitRouted(
-                timeline_time=self.game_state.battle.timeline.current_time,
-                unit=unit
-            )
-            self.event_manager.publish(event, source="MoraleManager")
-            
-            # Log the rout event
-            self._emit_log(f"{unit.name}: Routed (fleeing battlefield)", "BATTLE")
+        # Log the rout event
+        self._emit_log(f"{unit.name}: Routed (fleeing battlefield)", "BATTLE")
     
-    def _emit_rally_event(self, entity: "Entity") -> None:
+    def _emit_rally_event(self, unit: "Unit") -> None:
         """Emit unit rallied event.
         
         Args:
-            entity: Entity that rallied
+            unit: Unit that rallied
         """
         
-        # Find the unit that corresponds to this entity
-        unit = None
-        for map_unit in self.game_map.units:
-            if map_unit.entity is entity:
-                unit = map_unit
-                break
+        event = UnitRallied(
+            timeline_time=self.game_state.battle.timeline.current_time,
+            unit=unit
+        )
+        self.event_manager.publish(event, source="MoraleManager")
         
-        if unit:
-            event = UnitRallied(
-                timeline_time=self.game_state.battle.timeline.current_time,
-                unit=unit
-            )
-            self.event_manager.publish(event, source="MoraleManager")
-            
-            # Log the rally event
-            self._emit_log(f"{unit.name}: Rallied (regained courage)", "BATTLE")
+        # Log the rally event
+        self._emit_log(f"{unit.name}: Rallied (regained courage)", "BATTLE")

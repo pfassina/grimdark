@@ -8,11 +8,10 @@ help screens, minimap, confirmation dialogs, and ephemeral banners.
 import time
 from typing import TYPE_CHECKING, Optional
 
-from ...core.data import Vector2
+from ...core.data import Vector2, ComponentType
 from ...core.events import BattlePhaseChanged, GameEvent, GamePhaseChanged, EventType
 from ...core.engine import BattlePhase, get_available_actions
 from .log_manager import LogLevel
-from ..entities.components import WoundComponent
 
 if TYPE_CHECKING:
     from ...core.events.event_manager import EventManager
@@ -363,14 +362,13 @@ class UIManager:
             lines.append("".ljust(width))
         
         # Wounds (if any)
-        wound_comp = unit.entity.get_component("Wound")
-        if isinstance(wound_comp, WoundComponent) and wound_comp.active_wounds:
-            lines.append(f"─── Wounds ({len(wound_comp.active_wounds)}) ───".ljust(width))
+        if unit.has_component(ComponentType.WOUND) and unit.wound.active_wounds:
+            lines.append(f"─── Wounds ({len(unit.wound.active_wounds)}) ───".ljust(width))
             # Show first wound only
-            wound_line = f"1. {str(wound_comp.active_wounds[0])[:width-3]}"
+            wound_line = f"1. {str(unit.wound.active_wounds[0])[:width-3]}"
             lines.append(wound_line.ljust(width))
-            if len(wound_comp.active_wounds) > 1:
-                lines.append(f"... and {len(wound_comp.active_wounds)-1} more".ljust(width))
+            if len(unit.wound.active_wounds) > 1:
+                lines.append(f"... and {len(unit.wound.active_wounds)-1} more".ljust(width))
         
         return lines
     
@@ -419,11 +417,10 @@ class UIManager:
                 info_lines.append("  • Wait (Weight: 50)")
             
             # Wounds
-            wound_comp = unit.entity.get_component("Wound")
-            if isinstance(wound_comp, WoundComponent) and wound_comp.active_wounds:
+            if unit.has_component(ComponentType.WOUND) and unit.wound.active_wounds:
                 info_lines.append("")
-                info_lines.append(f"=== Wounds ({len(wound_comp.active_wounds)}) ===")
-                for i, wound in enumerate(wound_comp.active_wounds, 1):
+                info_lines.append(f"=== Wounds ({len(unit.wound.active_wounds)}) ===")
+                for i, wound in enumerate(unit.wound.active_wounds, 1):
                     info_lines.append(f"  {i}. {wound}")
         
         return info_lines

@@ -223,7 +223,7 @@ class CombatResolver:
             
             # Process morale effects from taking damage
             if self.morale_manager:
-                self.morale_manager.process_unit_damage(target.entity, int(damage), attacker.entity)
+                self.morale_manager.process_unit_damage(target, int(damage), attacker)
                 
             self._emit_log(f"{attacker.name} → {target.name} ({damage} damage)")
         
@@ -260,8 +260,8 @@ class CombatResolver:
                 
                 # Process morale effects from taking fatal damage and dying
                 if self.morale_manager:
-                    self.morale_manager.process_unit_damage(target.entity, int(damage), attacker.entity)
-                    self.morale_manager.process_unit_death(target.entity, attacker.entity)
+                    self.morale_manager.process_unit_damage(target, int(damage), attacker)
+                    self.morale_manager.process_unit_death(target, attacker)
                 
                 self._emit_log(f"{target.name}: Defeated")
                 

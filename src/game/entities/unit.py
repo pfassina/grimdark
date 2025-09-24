@@ -7,7 +7,8 @@ compatibility.
 
 from typing import Optional, cast
 
-from ...core.data import UnitClass, Team, Vector2
+from ...core.data import UnitClass, Team, Vector2, ComponentType
+from ...core.entities import Component
 from .unit_templates import create_unit_entity
 from .components import (
     ActorComponent, HealthComponent, MovementComponent, 
@@ -68,12 +69,12 @@ class Unit:
     @property
     def name(self) -> str:
         """Get unit name."""
-        return self._actor.name
+        return self.actor.name
     
     @property
     def team(self) -> Team:
         """Get team affiliation."""
-        return self._actor.team
+        return self.actor.team
     
     @property
     def unit_id(self) -> str:
@@ -83,22 +84,22 @@ class Unit:
     @property
     def position(self) -> Vector2:
         """Get position vector."""
-        return self._movement.position
+        return self.movement.position
     
     @property
     def facing(self) -> str:
         """Get facing direction."""
-        return self._movement.facing
+        return self.movement.facing
     
     @property
     def hp_current(self) -> int:
         """Get current hit points."""
-        return self._health.hp_current
+        return self.health.hp_current
     
     @hp_current.setter
     def hp_current(self, value: int) -> None:
         """Set current hit points directly."""
-        self._health.hp_current = max(0, value)
+        self.health.hp_current = max(0, value)
     
     @property  
     def mana_current(self) -> int:
@@ -115,137 +116,93 @@ class Unit:
     @property
     def has_moved(self) -> bool:
         """Check if unit has moved this turn."""
-        return self._status.has_moved
+        return self.status.has_moved
     
     @has_moved.setter
     def has_moved(self, value: bool) -> None:
         """Set moved status directly."""
-        self._status.has_moved = value
+        self.status.has_moved = value
     
     @property
     def has_acted(self) -> bool:
         """Check if unit has acted this turn."""
-        return self._status.has_acted
+        return self.status.has_acted
     
     @has_acted.setter
     def has_acted(self, value: bool) -> None:
         """Set acted status directly."""
-        self._status.has_acted = value
+        self.status.has_acted = value
     
     @property
     def is_alive(self) -> bool:
         """Check if unit is alive."""
-        return self._health.is_alive()
+        return self.health.is_alive()
     
     @property
     def can_act(self) -> bool:
         """Check if unit can act this turn."""
-        return self._status.can_act()
+        return self.health.is_alive() and self.status.can_act()
     
     @property
     def can_move(self) -> bool:
         """Check if unit can move this turn."""
-        return self._status.can_move()
+        return self.health.is_alive() and self.status.can_move()
     
     @property
     def status_effects(self) -> list[str]:
         """Get list of active status effects. Placeholder until status system is implemented."""
         return []
     
-    # ============== Component Access Properties ==============
+    
+    
+    # ============== Core Components (Always Present) ==============
     
     @property
     def actor(self) -> ActorComponent:
-        """Access Actor component for unit_class, symbol, class_name, etc."""
-        return self._actor
+        """Actor component - identity and team affiliation."""
+        return cast(ActorComponent, self.entity.require_component(ComponentType.ACTOR))
     
     @property  
     def health(self) -> HealthComponent:
-        """Access Health component for hp_max, hp_percent, healing methods, etc."""
-        return self._health
+        """Health component - HP and life status."""
+        return cast(HealthComponent, self.entity.require_component(ComponentType.HEALTH))
     
     @property
-    def movement(self) -> MovementComponent:  
-        """Access Movement component for movement_points, face_direction, etc."""
-        return self._movement
+    def movement(self) -> MovementComponent:
+        """Movement component - position and mobility."""
+        return cast(MovementComponent, self.entity.require_component(ComponentType.MOVEMENT))
     
     @property
     def combat(self) -> CombatComponent:
-        """Access Combat component for strength, defense, attack_range, etc."""
-        return self._combat
+        """Combat component - attack and defense capabilities."""
+        return cast(CombatComponent, self.entity.require_component(ComponentType.COMBAT))
     
     @property
     def status(self) -> StatusComponent:
-        """Access Status component for speed, mark_moved, turn methods, etc."""
-        return self._status
+        """Status component - turn state and availability."""
+        return cast(StatusComponent, self.entity.require_component(ComponentType.STATUS))
     
-    
-    # ============== Component Access Helpers (Internal) ==============
-    
-    @property
-    def _actor(self) -> ActorComponent:
-        """Get Actor component (internal helper)."""
-        return cast(ActorComponent, self.entity.require_component("Actor"))
-    
-    @property  
-    def _health(self) -> HealthComponent:
-        """Get Health component (internal helper)."""
-        return cast(HealthComponent, self.entity.require_component("Health"))
-    
-    @property
-    def _movement(self) -> MovementComponent:
-        """Get Movement component (internal helper)."""
-        return cast(MovementComponent, self.entity.require_component("Movement"))
-    
-    @property
-    def _combat(self) -> CombatComponent:
-        """Get Combat component (internal helper)."""
-        return cast(CombatComponent, self.entity.require_component("Combat"))
-    
-    @property
-    def _status(self) -> StatusComponent:
-        """Get Status component (internal helper)."""
-        return cast(StatusComponent, self.entity.require_component("Status"))
-    
-    @property
-    def _interrupt(self) -> InterruptComponent:
-        """Get Interrupt component (internal helper)."""
-        return cast(InterruptComponent, self.entity.require_component("Interrupt"))
-    
-    @property
-    def _morale(self) -> MoraleComponent:
-        """Get Morale component (internal helper)."""
-        return cast(MoraleComponent, self.entity.require_component("Morale"))
-    
-    @property
-    def _wound(self) -> WoundComponent:
-        """Get Wound component (internal helper)."""
-        return cast(WoundComponent, self.entity.require_component("Wound"))
-    
-    @property
-    def _ai(self) -> AIComponent:
-        """Get AI component (internal helper)."""
-        return cast(AIComponent, self.entity.require_component("AI"))
+    # ============== Optional Components ==============
     
     @property
     def interrupt(self) -> InterruptComponent:
-        """Access Interrupt component for prepared actions and interrupts."""
-        return self._interrupt
+        """Interrupt component - prepared actions and reactions."""
+        return cast(InterruptComponent, self.entity.require_component(ComponentType.INTERRUPT))
     
     @property
-    def morale(self) -> "MoraleComponent":
-        """Access Morale component for psychological state management."""
-        return self._morale
+    def morale(self) -> MoraleComponent:
+        """Morale component - psychological state."""
+        return cast(MoraleComponent, self.entity.require_component(ComponentType.MORALE))
     
     @property
-    def wound(self) -> "WoundComponent":
-        """Access Wound component for injury and scar management."""
-        return self._wound
+    def wound(self) -> WoundComponent:
+        """Wound component - injury tracking."""
+        return cast(WoundComponent, self.entity.require_component(ComponentType.WOUND))
     
     @property
     def ai(self) -> AIComponent:
-        """Access AI component for behavior and decision-making."""
-        return self._ai
+        """AI component - computer control behavior."""
+        return cast(AIComponent, self.entity.require_component(ComponentType.AI))
     
     
     # ============== Methods (delegate to components) ==============
@@ -281,9 +238,40 @@ class Unit:
         """Calculate damage to target."""
         return self.combat.calculate_damage_to(target.combat)
     
-    def can_attack(self, target: Vector2) -> bool:
-        """Check if can attack position."""
-        # Need to check status as well for backward compatibility
-        if not self.status.can_act():
-            return False
-        return self.combat.can_attack(target)
+    
+    # ============== Component Management ==============
+    
+    def add_component(self, component: "Component") -> None:
+        """Add a component, checking for duplicates.
+        
+        Args:
+            component: Fully configured component to add
+            
+        Raises:
+            ValueError: If unit already has this component type
+        """
+        component_type = component.get_component_type()
+        
+        if self.entity.has_component(component_type):
+            raise ValueError(f"Unit already has component: {component_type}")
+            
+        self.entity.add_component(component)
+    
+    def has_component(self, component_type: ComponentType) -> bool:
+        """Check if unit has the specified component type.
+        
+        Args:
+            component_type: Component type to check for
+            
+        Returns:
+            True if component is present
+        """
+        return self.entity.has_component(component_type)
+    
+    def remove_component(self, component_type: ComponentType) -> None:
+        """Remove component by type.
+        
+        Args:
+            component_type: Component type to remove
+        """
+        self.entity.remove_component(component_type)

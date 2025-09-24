@@ -6,7 +6,7 @@ Combat, and Status components, as well as the Unit wrapper class.
 """
 
 import pytest
-from src.core.data import Vector2, UnitClass, Team
+from src.core.data import Vector2, UnitClass, Team, ComponentType
 from src.game.entities import ActorComponent, HealthComponent, MovementComponent, CombatComponent, StatusComponent, Unit
 
 
@@ -32,7 +32,7 @@ class TestActorComponent:
         assert actor_component.name == "Test Knight"
         assert actor_component.unit_class == UnitClass.KNIGHT
         assert actor_component.team == Team.PLAYER
-        assert actor_component.get_component_name() == "Actor"
+        assert actor_component.get_component_type() == ComponentType.ACTOR
 
     def test_get_display_name(self, actor_component):
         """Test getting display name."""
@@ -81,7 +81,7 @@ class TestHealthComponent:
         """Test basic health component creation."""
         assert health_component.hp_max == 25
         assert health_component.hp_current == 25  # Start at full health
-        assert health_component.get_component_name() == "Health"
+        assert health_component.get_component_type() == ComponentType.HEALTH
 
     def test_is_alive_when_healthy(self, health_component):
         """Test that unit is alive when healthy."""
@@ -131,7 +131,7 @@ class TestMovementComponent:
         """Test basic movement component creation."""
         assert movement_component.position == Vector2(5, 7)
         assert movement_component.movement_points == 3
-        assert movement_component.get_component_name() == "Movement"
+        assert movement_component.get_component_type() == ComponentType.MOVEMENT
 
     def test_position_property_access(self, movement_component):
         """Test accessing position coordinates."""
@@ -177,7 +177,7 @@ class TestCombatComponent:
         assert combat_component.attack_range_min == 1
         assert combat_component.attack_range_max == 1
         assert combat_component.defense == 2
-        assert combat_component.get_component_name() == "Combat"
+        assert combat_component.get_component_type() == ComponentType.COMBAT
 
     def test_can_attack_target(self, combat_component):
         """Test target attack range validation."""
@@ -201,7 +201,7 @@ class TestStatusComponent:
     def test_status_creation(self, status_component):
         """Test basic status component creation."""
         assert status_component.speed == 5
-        assert status_component.get_component_name() == "Status"
+        assert status_component.get_component_type() == ComponentType.STATUS
 
     def test_turn_state_initialization(self, status_component):
         """Test initial turn state."""
@@ -301,13 +301,13 @@ class TestComponentIntegration:
         combat = CombatComponent(mock_entity, 10, 2, 1, 1)
         status = StatusComponent(mock_entity, 5)
         
-        component_names = {
-            actor.get_component_name(),
-            health.get_component_name(),
-            movement.get_component_name(),
-            combat.get_component_name(),
-            status.get_component_name()
+        component_types = {
+            actor.get_component_type(),
+            health.get_component_type(),
+            movement.get_component_type(),
+            combat.get_component_type(),
+            status.get_component_type()
         }
         
-        # All component names should be unique
-        assert len(component_names) == 5
+        # All component types should be unique
+        assert len(component_types) == 5

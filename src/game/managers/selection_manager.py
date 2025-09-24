@@ -21,7 +21,6 @@ from ...core.events import (
     LogMessage,
     ManagerInitialized,
     UnitDefeated,
-    UnitTurnEnded,
     UnitTurnStarted,
 )
 from ...core.data import Team
@@ -70,11 +69,6 @@ class SelectionManager:
             subscriber_name="SelectionManager.unit_turn_started",
         )
         
-        self.event_manager.subscribe(
-            event_type=EventType.UNIT_TURN_ENDED,
-            subscriber=self._handle_unit_turn_ended,
-            subscriber_name="SelectionManager.unit_turn_ended",
-        )
 
     def _emit_log(
         self, message: str, category: str = "SELECTION", level: LogLevel = LogLevel.DEBUG
@@ -186,11 +180,3 @@ class SelectionManager:
         else:
             self._emit_log(f"AI unit {unit.name} turn started - AI will handle")
 
-    def _handle_unit_turn_ended(self, event: GameEvent) -> None:
-        """Handle unit turn ended by clearing selection state."""
-        assert isinstance(event, UnitTurnEnded), f"Expected UnitTurnEnded, got {type(event)}"
-        
-        # Clear unit selection (selection state)
-        self.state.battle.selected_unit_id = None
-        
-        self._emit_log("Unit turn ended - cleared selection state")

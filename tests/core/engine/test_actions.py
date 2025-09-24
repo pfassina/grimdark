@@ -477,6 +477,16 @@ class TestPowerAttack:
         """Test successful execution with event system."""
         event_emitter = Mock()
         
+        # Create a mock target unit at the target position
+        target_unit = MockUnit(
+            unit_id="target1",
+            name="Enemy",
+            team=Team.ENEMY,
+            position=target
+        )
+        # Tell the mock game map to return this unit when checking AOE positions
+        game_map.set_mock_units_in_aoe([target_unit])
+        
         result = action.execute(actor, game_map, target, event_emitter)
         
         assert result == ActionResult.SUCCESS

@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
-from ...core.data import Vector2
+from ...core.data import Vector2, AOEPattern
 from ...core.wounds import create_wound_from_damage, Wound
 from ...core.events import EventType, UnitAttacked, LogMessage, UnitDefeated
 
@@ -110,7 +110,7 @@ class CombatResolver:
         self, 
         attacker: "Unit", 
         center_pos: Vector2, 
-        aoe_pattern: str
+        aoe_pattern: AOEPattern
     ) -> CombatResult:
         """
         Execute AOE attack centered on target position using vectorized operations.

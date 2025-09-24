@@ -307,8 +307,6 @@ class TimelineManager:
         # Just set the acting unit ID here
         self.state.battle.current_acting_unit_id = unit.unit_id
 
-        # DEFENSIVE: Validate synchronization and attempt recovery if needed
-        self._validate_timeline_unit_synchronization(unit)
 
         # Store original position for potential movement cancellation
         self.state.battle.original_unit_position = unit.position
@@ -522,7 +520,7 @@ class TimelineManager:
             if validation.reason == "friendly_fire" and validation.friendly_units:
                 # If bypass_friendly_fire is set, proceed with the action despite friendly fire
                 if bypass_friendly_fire:
-                    self._emit_log(f"Executing action with friendly fire (user confirmed)", "TIMELINE", LogLevel.WARNING)
+                    self._emit_log("Executing action with friendly fire (user confirmed)", "TIMELINE", LogLevel.WARNING)
                     # Don't return here - continue to execute the action below
                 else:
                     # DEBUG: Log friendly fire detection
@@ -812,50 +810,6 @@ class TimelineManager:
 
         return not (player_alive and enemy_alive)
 
-    def _validate_timeline_unit_synchronization(self, expected_unit: "Unit") -> None:
-        """Validate that timeline, cursor, and selection are properly synchronized.
-
-        Args:
-            expected_unit: The unit that should be acting according to the timeline
-        """
-        inconsistencies = []
-
-        # Check cursor position matches unit position
-        if self.state.cursor.position != expected_unit.position:
-            inconsistencies.append(
-                f"Cursor position {self.state.cursor.position} != unit position {expected_unit.position}"
-            )
-
-        # Check selected unit ID matches timeline unit
-        if self.state.battle.selected_unit_id != expected_unit.unit_id:
-            inconsistencies.append(
-                f"Selected unit '{self.state.battle.selected_unit_id}' != timeline unit '{expected_unit.unit_id}'"
-            )
-
-        # Check that the current acting unit ID matches
-        if self.state.battle.current_acting_unit_id != expected_unit.unit_id:
-            inconsistencies.append(
-                f"Acting unit '{self.state.battle.current_acting_unit_id}' != timeline unit '{expected_unit.unit_id}'"
-            )
-
-        if inconsistencies:
-            self._emit_log(
-                "=== SYNCHRONIZATION ISSUES DETECTED ===", "TIMELINE", LogLevel.WARNING
-            )
-            for issue in inconsistencies:
-                self._emit_log(f"  - {issue}", "TIMELINE", LogLevel.WARNING)
-            self._emit_log("Attempting recovery...", "TIMELINE", LogLevel.WARNING)
-
-            # Attempt recovery by forcing synchronization
-            self.state.cursor.set_position(expected_unit.position)
-            self.state.battle.selected_unit_id = expected_unit.unit_id
-            self.state.battle.current_acting_unit_id = expected_unit.unit_id
-
-            self._emit_log(
-                "Recovery completed - cursor and selection forced to sync with timeline",
-                "TIMELINE",
-                LogLevel.WARNING,
-            )
 
     def update(self) -> None:
         """Update the timeline manager (called each game loop).

@@ -106,6 +106,7 @@ class TestCombatResolverInitialization:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture
@@ -150,6 +151,7 @@ class TestSingleAttack:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture
@@ -236,11 +238,11 @@ class TestSingleAttack:
         assert weak_target.name in result.defeated_positions
         
         # Should emit UnitDefeated event
-        mock_event_manager.publish.assert_called()
+        mock_event_manager.publish_immediate.assert_called()
         
-        # Find the UnitDefeated event in the publish calls
+        # Find the UnitDefeated event in the publish_immediate calls
         defeated_event_published = False
-        for call in mock_event_manager.publish.call_args_list:
+        for call in mock_event_manager.publish_immediate.call_args_list:
             event = call[0][0]  # First argument is the event
             if isinstance(event, UnitDefeated):
                 assert event.unit.name == weak_target.name
@@ -264,6 +266,7 @@ class TestAOEAttack:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture
@@ -345,6 +348,7 @@ class TestDamageCalculation:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture
@@ -417,6 +421,7 @@ class TestMoraleIntegration:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture
@@ -475,6 +480,7 @@ class TestEventHandling:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture
@@ -561,6 +567,7 @@ class TestCombatEdgeCases:
         event_manager = Mock(spec=EventManager)
         event_manager.subscribe = Mock()
         event_manager.publish = Mock()
+        event_manager.publish_immediate = Mock()
         return event_manager
         
     @pytest.fixture

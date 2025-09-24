@@ -9,9 +9,9 @@ import pytest
 from unittest.mock import Mock, patch
 
 from src.game.game import Game
-from src.core.engine.game_state import GameState, GamePhase, BattlePhase
-from src.core.events.event_manager import EventManager
-from src.core.events.events import GameEnded, LogMessage
+from src.core.engine import GameState, GamePhase, BattlePhase
+from src.core.events import EventManager, GameEnded, LogMessage
+from src.game.managers import LogLevel
 from src.core.input import InputEvent
 
 
@@ -356,14 +356,14 @@ class TestGameEventSystem:
             
         game.event_manager.publish = capture_event
         
-        game._emit_log("Test message", "TEST", "DEBUG")
+        game._emit_log("Test message", "TEST", LogLevel.DEBUG)
         
         assert len(published_events) == 1
         event, source = published_events[0]
         assert isinstance(event, LogMessage)
         assert event.message == "Test message"
         assert event.category == "TEST"
-        assert event.level == "DEBUG"
+        assert event.level == LogLevel.DEBUG
         assert source == "Game"
 
 

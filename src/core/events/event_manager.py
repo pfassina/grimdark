@@ -252,7 +252,7 @@ class EventManager:
         
         self._debug_log(
             f"Processing {event.__class__.__name__} from {queued_event.source} "
-            f"(turn: {event.turn})"
+            f"(timeline_time: {event.timeline_time})"
         )
         
         # Notify specific event type subscribers
@@ -318,7 +318,7 @@ class EventManager:
             return [
                 {
                     'event_type': queued.event.__class__.__name__,
-                    'turn': queued.event.turn,
+                    'timeline_time': queued.event.timeline_time,
                     'priority': queued.priority.name,
                     'source': queued.source,
                     'timestamp': queued.timestamp.isoformat()

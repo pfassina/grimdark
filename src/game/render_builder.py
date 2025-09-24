@@ -16,11 +16,14 @@ if TYPE_CHECKING:
     from ..core.engine.game_state import GameState
     from ..core.renderer import Renderer
 
-from ..core.data.data_structures import DataConverter, Vector2
-from ..core.engine.game_state import GamePhase
-from ..core.entities.renderable import (
+from ..core.data import DataConverter, Vector2, TerrainType
+from ..core.engine import GamePhase, BattlePhase
+from ..core.entities import (
+    ActionMenuPanelRenderData,
+    ActionMenuItemRenderData,
     AttackTargetRenderData,
     CursorRenderData,
+    HazardRenderData,
     LogPanelRenderData,
     MenuRenderData,
     OverlayTileRenderData,
@@ -29,7 +32,9 @@ from ..core.entities.renderable import (
     TileRenderData,
     TimelineRenderData,
     TimelineEntryRenderData,
+    UnitInfoPanelRenderData,
 )
+from ..core.tileset_loader import get_tileset_config
 
 
 TManager = TypeVar("TManager")
@@ -216,7 +221,6 @@ class RenderBuilder:
         Creates all tile render data at once using numpy operations
         instead of nested loops for significant performance improvement.
         """
-        from ..core.data.game_enums import TerrainType
         
         # Get structured tile data from game map
         terrain_types = self.game_map.tiles['terrain_type']
@@ -303,7 +307,6 @@ class RenderBuilder:
         """Add unit data to the render context with highlighting."""
         def highlight_units(unit):
             """Determine highlight type for units."""
-            from ..core.engine.game_state import BattlePhase
             
             if (
                 self.state.battle.phase == BattlePhase.ACTION_EXECUTION
@@ -325,7 +328,6 @@ class RenderBuilder:
     
     def _add_hazards_to_context(self, context: RenderContext) -> None:
         """Add hazard data to the render context."""
-        from ..core.entities.renderable import HazardRenderData
         
         # TODO: Enable hazard rendering when hazard system is complete
         # The hazard manager is WIP - skip hazard rendering until fully implemented
@@ -456,28 +458,16 @@ class RenderBuilder:
         timeline_entries = []
         current_time = 0
         
-        # Get real timeline data if available
-        if hasattr(self.state.battle, 'timeline') and self.state.battle.timeline:
-            timeline = self.state.battle.timeline
-            current_time = timeline.current_time
-            
-            # Get timeline preview (next 8 entries)
-            timeline_preview = timeline.get_preview(8)
-            
-            for index, entry in enumerate(timeline_preview):
-                try:
-                    timeline_entry = self._convert_timeline_entry(entry, index, current_time)
-                    timeline_entries.append(timeline_entry)
-                except Exception as e:
-                    print(f"Error converting timeline entry: {e}")
-                    # Skip problematic entries rather than crash
-                    continue
-        else:
-            # Fallback to simple unit listing if timeline not available
-            for i, unit in enumerate(self.game_map.units):
-                if unit and unit.is_alive and i < 8:  # Limit to 8 entries
-                    timeline_entry = self._create_fallback_entry(unit, i)
-                    timeline_entries.append(timeline_entry)
+        # Get real timeline data - timeline must exist if this method is called
+        timeline = self.state.battle.timeline
+        current_time = timeline.current_time
+        
+        # Get timeline preview (next 8 entries)
+        timeline_preview = timeline.get_preview(8)
+        
+        for index, entry in enumerate(timeline_preview):
+            timeline_entry = self._convert_timeline_entry(entry, index, current_time)
+            timeline_entries.append(timeline_entry)
         
         context.timeline = TimelineRenderData(
             current_time=current_time,
@@ -490,7 +480,6 @@ class RenderBuilder:
     
     def _convert_timeline_entry(self, entry, index: int, current_time: int) -> "TimelineEntryRenderData":
         """Convert a timeline entry to render data."""
-        from ..core.entities.renderable import TimelineEntryRenderData
         
         # Just provide raw data, let renderer decide symbols/formatting
         entity_name = "Unknown"
@@ -515,7 +504,7 @@ class RenderBuilder:
         visibility = "full"
         if team != 0 and is_hidden:
             visibility = "hidden"
-        elif team != 0 and hasattr(entry, 'hidden_intent') and entry.hidden_intent:
+        elif team != 0 and False:  # TODO: Replace with actual hidden intent system
             visibility = "partial"
         
         ticks_remaining = max(0, entry.execution_time - current_time)
@@ -536,13 +525,12 @@ class RenderBuilder:
     
     def _create_fallback_entry(self, unit, index: int) -> "TimelineEntryRenderData":
         """Create fallback timeline entry for unit.""" 
-        from ..core.entities.renderable import TimelineEntryRenderData
         
         # Determine basic action status
         action_desc = "Ready"
-        if hasattr(unit, 'has_acted') and unit.has_acted:
+        if unit.has_acted:
             action_desc = "Acted"
-        elif hasattr(unit, 'has_moved') and unit.has_moved:
+        elif unit.has_moved:
             action_desc = "Moved"
         
         return TimelineEntryRenderData(
@@ -561,7 +549,6 @@ class RenderBuilder:
     
     def _add_unit_info_panel(self, context: RenderContext, screen_width: int, screen_height: int) -> None:
         """Add unit info panel data to render context."""
-        from ..core.entities.renderable import UnitInfoPanelRenderData
         
         # Calculate panel dimensions (same as terminal renderer)
         bottom_panel_height = max(4, int(screen_height * 0.20))
@@ -570,7 +557,7 @@ class RenderBuilder:
         
         # Get currently selected unit for display
         selected_unit = None
-        if hasattr(self.state.battle, 'selected_unit_id') and self.state.battle.selected_unit_id:
+        if self.state.battle.selected_unit_id:
             for unit in self.game_map.units:
                 if unit and unit.is_alive and unit.name == self.state.battle.selected_unit_id:
                     selected_unit = unit
@@ -591,35 +578,22 @@ class RenderBuilder:
             next_action_ticks = None
             is_acting_now = False
             
-            # Try to get enhanced unit data if available
-            try:
-                if hasattr(selected_unit, 'status_effects'):
-                    status_effects = selected_unit.status_effects
-                if hasattr(selected_unit, 'wound') and hasattr(selected_unit.wound, 'get_active_wounds'):
-                    wounds = [str(wound) for wound in selected_unit.wound.get_active_wounds()]
-                
-                # Get timeline information if available
-                if hasattr(self.state.battle, 'timeline') and self.state.battle.timeline:
-                    timeline = self.state.battle.timeline
-                    # Find next action for this unit in timeline
-                    for entry in timeline.get_preview(10):  # Look at next 10 entries
-                        if entry.entity_type == "unit" and entry.entity_id == selected_unit.unit_id:
-                            next_action_ticks = entry.execution_time - timeline.current_time
-                            is_acting_now = next_action_ticks <= 0
-                            break
-            except AttributeError:
-                pass  # Use defaults if enhanced systems not available
+            # Get unit data - fail fast if components missing
+            status_effects = selected_unit.status_effects
+            wounds = [str(wound) for wound in selected_unit.wound.get_active_wounds()]
             
-            # Get mana information (default to 0 if not available)
-            mana_current = 0
-            mana_max = 0
-            try:
-                if hasattr(selected_unit, 'mana_current'):
-                    mana_current = selected_unit.mana_current
-                if hasattr(selected_unit, 'mana_max'):
-                    mana_max = selected_unit.mana_max
-            except AttributeError:
-                pass
+            # Get timeline information - fail fast if missing
+            timeline = self.state.battle.timeline
+            # Find next action for this unit in timeline
+            for entry in timeline.get_preview(10):  # Look at next 10 entries
+                if entry.entity_type == "unit" and entry.entity_id == selected_unit.unit_id:
+                    next_action_ticks = entry.execution_time - timeline.current_time
+                    is_acting_now = next_action_ticks <= 0
+                    break
+            
+            # Get mana information - fail fast if missing
+            mana_current = selected_unit.mana_current
+            mana_max = selected_unit.mana_max
             
             context.unit_info_panel = UnitInfoPanelRenderData(
                 x=0,
@@ -627,9 +601,9 @@ class RenderBuilder:
                 width=unit_info_width,
                 height=bottom_panel_height,
                 unit_name=selected_unit.name,
-                unit_class=selected_unit.actor.get_class_name() if hasattr(selected_unit, 'actor') else str(selected_unit.actor.unit_class.name).title(),
+                unit_class=selected_unit.actor.get_class_name(),
                 hp_current=selected_unit.hp_current,
-                hp_max=selected_unit.health.hp_max if hasattr(selected_unit, 'health') else 100,
+                hp_max=selected_unit.health.hp_max,
                 mana_current=mana_current,
                 mana_max=mana_max,
                 status_effects=status_effects,
@@ -647,21 +621,19 @@ class RenderBuilder:
             tile = self.game_map.get_tile(cursor_pos)
             
             # Get terrain information
-            terrain_name = tile.terrain_type.name.replace('_', ' ').title() if hasattr(tile.terrain_type, 'name') else str(tile.terrain_type)
+            terrain_name = tile.terrain_type.name.replace('_', ' ').title()
             
             # Get tile properties if available
             tile_info = []
             try:
-                from ..core.tileset_loader import get_tileset_config
                 tileset = get_tileset_config()
-                if hasattr(tile.terrain_type, 'name'):
-                    terrain_props = tileset.get_terrain_gameplay_info(tile.terrain_type.name.lower())
-                    if terrain_props:
-                        move_cost = terrain_props.get('move_cost', 1)
-                        defense_bonus = terrain_props.get('defense_bonus', 0)
-                        tile_info.append(f"Move Cost: {move_cost}")
-                        if defense_bonus > 0:
-                            tile_info.append(f"Defense: +{defense_bonus}")
+                terrain_props = tileset.get_terrain_gameplay_info(tile.terrain_type.name.lower())
+                if terrain_props:
+                    move_cost = terrain_props.get('move_cost', 1)
+                    defense_bonus = terrain_props.get('defense_bonus', 0)
+                    tile_info.append(f"Move Cost: {move_cost}")
+                    if defense_bonus > 0:
+                        tile_info.append(f"Defense: +{defense_bonus}")
             except (ImportError, AttributeError, KeyError, TypeError):
                 # Ignore tileset loading errors - tile info will be empty
                 pass
@@ -687,7 +659,6 @@ class RenderBuilder:
     
     def _add_action_menu_panel(self, context: RenderContext, screen_width: int, screen_height: int) -> None:
         """Add action menu panel data to render context."""
-        from ..core.entities.renderable import ActionMenuPanelRenderData, ActionMenuItemRenderData
         
         # Calculate panel dimensions
         bottom_panel_height = max(4, int(screen_height * 0.20))
@@ -701,7 +672,7 @@ class RenderBuilder:
         
         # Convert existing action menu items to enhanced format
         action_items = []
-        if hasattr(self.state.ui, 'action_menu_items') and self.state.ui.action_menu_items:
+        if self.state.ui.action_menu_items:
             for item_str in self.state.ui.action_menu_items:
                 # Parse action items from string format (basic parsing)
                 # This is a simplified version - a full implementation would have 
@@ -756,7 +727,7 @@ class RenderBuilder:
                 height=bottom_panel_height,
                 title="Actions",
                 actions=action_items,
-                selected_index=self.state.ui.action_menu_selection if hasattr(self.state.ui, 'action_menu_selection') else 0,
+                selected_index=self.state.ui.action_menu_selection,
                 selection_indicator="➤",
                 show_weights=True,
                 show_mana_costs=True

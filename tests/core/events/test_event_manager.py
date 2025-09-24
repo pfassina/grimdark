@@ -7,17 +7,16 @@ manager interactions through the publisher-subscriber pattern.
 
 import time
 from unittest.mock import Mock
-from src.core.events.event_manager import EventPriority, QueuedEvent
-from src.core.events.events import GameEvent, EventType, TurnStarted
-from src.core.data.game_enums import Team
+from src.core.events import EventPriority, QueuedEvent, GameEvent, EventType, TurnStarted
+from src.core.data import Team
 
 
 class MockEvent(GameEvent):
     """Mock event for testing."""
     event_type = EventType.TURN_STARTED
     
-    def __init__(self, turn: int, data: str = "test"):
-        super().__init__(turn=turn)
+    def __init__(self, timeline_time: int, data: str = "test"):
+        super().__init__(timeline_time=timeline_time)
         self.data = data
 
 
@@ -26,7 +25,7 @@ class TestQueuedEvent:
 
     def test_queued_event_creation(self):
         """Test basic queued event creation."""
-        event = MockEvent(turn=1)
+        event = MockEvent(timeline_time=1)
         queued = QueuedEvent(event=event, priority=EventPriority.HIGH, source="test")
         
         assert queued.event == event
@@ -49,9 +48,9 @@ class TestQueuedEvent:
     def test_queued_event_ordering_by_timestamp(self):
         """Test that events with same priority are ordered by timestamp."""
         
-        event1 = QueuedEvent(MockEvent(1), EventPriority.NORMAL)
+        event1 = QueuedEvent(MockEvent(timeline_time=1), EventPriority.NORMAL)
         time.sleep(0.001)  # Small delay to ensure different timestamps
-        event2 = QueuedEvent(MockEvent(1), EventPriority.NORMAL)
+        event2 = QueuedEvent(MockEvent(timeline_time=1), EventPriority.NORMAL)
         
         assert event1 < event2
 
@@ -87,7 +86,7 @@ class TestEventManager:
 
     def test_publish_event(self, event_manager):
         """Test publishing events to the queue."""
-        event = MockEvent(turn=1)
+        event = MockEvent(timeline_time=1)
         
         event_manager.publish(event, priority=EventPriority.HIGH, source="test")
         
@@ -101,7 +100,7 @@ class TestEventManager:
         subscriber = Mock()
         event_manager.subscribe(EventType.TURN_STARTED, subscriber)
         
-        event = MockEvent(turn=1)
+        event = MockEvent(timeline_time=1)
         event_manager.publish_immediate(event, source="test")
         
         # Event should be processed immediately
@@ -113,8 +112,8 @@ class TestEventManager:
         event_manager.subscribe(EventType.TURN_STARTED, subscriber)
         
         # Publish multiple events
-        event1 = MockEvent(turn=1, data="first")
-        event2 = MockEvent(turn=2, data="second")
+        event1 = MockEvent(timeline_time=1, data="first")
+        event2 = MockEvent(timeline_time=2, data="second")
         
         event_manager.publish(event1)
         event_manager.publish(event2)
@@ -133,7 +132,7 @@ class TestEventManager:
         
         # Publish multiple events
         for i in range(5):
-            event_manager.publish(MockEvent(turn=i))
+            event_manager.publish(MockEvent(timeline_time=i))
         
         # Process only 2 events
         processed_count = event_manager.process_events(max_events=2)
@@ -152,10 +151,10 @@ class TestEventManager:
         event_manager.subscribe(EventType.TURN_STARTED, capture_event)
         
         # Publish events in reverse priority order
-        event_manager.publish(MockEvent(1, "low"), EventPriority.LOW)
-        event_manager.publish(MockEvent(1, "critical"), EventPriority.CRITICAL)
-        event_manager.publish(MockEvent(1, "normal"), EventPriority.NORMAL)
-        event_manager.publish(MockEvent(1, "high"), EventPriority.HIGH)
+        event_manager.publish(MockEvent(timeline_time=1, data="low"), EventPriority.LOW)
+        event_manager.publish(MockEvent(timeline_time=1, data="critical"), EventPriority.CRITICAL)
+        event_manager.publish(MockEvent(timeline_time=1, data="normal"), EventPriority.NORMAL)
+        event_manager.publish(MockEvent(timeline_time=1, data="high"), EventPriority.HIGH)
         
         event_manager.process_events()
         
@@ -172,8 +171,8 @@ class TestEventManager:
         event_manager.subscribe(EventType.TURN_STARTED, specific_subscriber)
         
         # Publish different event types
-        turn_event = TurnStarted(turn=1, team=Team.PLAYER)
-        mock_event = MockEvent(turn=1)
+        turn_event = TurnStarted(timeline_time=1, team=Team.PLAYER)
+        mock_event = MockEvent(timeline_time=1)
         
         event_manager.publish_immediate(turn_event)
         event_manager.publish_immediate(mock_event)
@@ -193,7 +192,7 @@ class TestEventManager:
         assert success
         
         # Publishing event should not call subscriber
-        event_manager.publish_immediate(MockEvent(turn=1))
+        event_manager.publish_immediate(MockEvent(timeline_time=1))
         subscriber.assert_not_called()
 
     def test_unsubscribe_all(self, event_manager):
@@ -206,7 +205,7 @@ class TestEventManager:
         assert success
         
         # Publishing event should not call subscriber
-        event_manager.publish_immediate(MockEvent(turn=1))
+        event_manager.publish_immediate(MockEvent(timeline_time=1))
         subscriber.assert_not_called()
 
     def test_subscriber_exception_handling(self, event_manager):
@@ -218,15 +217,15 @@ class TestEventManager:
         event_manager.subscribe(EventType.TURN_STARTED, working_subscriber)
         
         # Process event - should not raise exception
-        event_manager.publish_immediate(MockEvent(turn=1))
+        event_manager.publish_immediate(MockEvent(timeline_time=1))
         
         # Working subscriber should still be called
         working_subscriber.assert_called_once()
 
     def test_clear_queue(self, event_manager):
         """Test clearing the event queue."""
-        event_manager.publish(MockEvent(turn=1))
-        event_manager.publish(MockEvent(turn=2))
+        event_manager.publish(MockEvent(timeline_time=1))
+        event_manager.publish(MockEvent(timeline_time=2))
         
         cleared_count = event_manager.clear_queue()
         
@@ -237,30 +236,30 @@ class TestEventManager:
         """Test checking for high priority events."""
         assert not event_manager.has_high_priority_events()
         
-        event_manager.publish(MockEvent(turn=1), EventPriority.NORMAL)
+        event_manager.publish(MockEvent(timeline_time=1), EventPriority.NORMAL)
         assert not event_manager.has_high_priority_events()
         
-        event_manager.publish(MockEvent(turn=2), EventPriority.HIGH)
+        event_manager.publish(MockEvent(timeline_time=2), EventPriority.HIGH)
         assert event_manager.has_high_priority_events()
 
     def test_get_recent_events(self, event_manager):
         """Test getting recent event history."""
         # Process some events to build history
         for i in range(5):
-            event_manager.publish_immediate(MockEvent(turn=i))
+            event_manager.publish_immediate(MockEvent(timeline_time=i))
         
         recent = event_manager.get_recent_events(count=3)
         
         assert len(recent) == 3
         assert all('event_type' in event_info for event_info in recent)
-        assert all('turn' in event_info for event_info in recent)
+        assert all('timeline_time' in event_info for event_info in recent)
 
     def test_shutdown(self, event_manager):
         """Test event manager shutdown."""
         # Add some data
         subscriber = Mock()
         event_manager.subscribe(EventType.TURN_STARTED, subscriber)
-        event_manager.publish(MockEvent(turn=1))
+        event_manager.publish(MockEvent(timeline_time=1))
         
         event_manager.shutdown()
         

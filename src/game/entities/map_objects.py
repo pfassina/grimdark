@@ -10,7 +10,7 @@ from enum import Enum
 import yaml
 import os
 
-from ...core.data.game_enums import Team
+from ...core.data import Team
 
 
 class TriggerType(Enum):

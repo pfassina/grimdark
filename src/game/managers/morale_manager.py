@@ -7,13 +7,14 @@ that battles are as much about breaking the enemy's will as their bodies.
 
 from typing import TYPE_CHECKING, Optional, cast
 
-from ...core.events.events import (
+from ...core.events import (
     MoraleChanged, UnitPanicked, UnitRouted, UnitRallied,
-    UnitTookDamage, UnitDefeated, BattlePhaseChanged, LogMessage,
+    UnitDamaged, UnitDefeated, BattlePhaseChanged, LogMessage,
     EventType, GameEvent
 )
-from ...core.data.data_structures import Vector2
+from ...core.data import Vector2, PanicTrigger
 from ..entities.components import MoraleComponent, ActorComponent, MovementComponent
+from .log_manager import LogLevel
 
 if TYPE_CHECKING:
     from ...core.entities.components import Entity
@@ -55,7 +56,7 @@ class MoraleManager:
     def _setup_event_subscriptions(self) -> None:
         """Set up event subscriptions for morale manager."""
         # Subscribe to damage events to trigger morale effects
-        self.event_manager.subscribe(EventType.UNIT_TOOK_DAMAGE, self._on_unit_took_damage)
+        self.event_manager.subscribe(EventType.UNIT_DAMAGED, self._on_unit_damaged)
         
         # Subscribe to unit death events to process nearby morale effects
         self.event_manager.subscribe(EventType.UNIT_DEFEATED, self._on_unit_defeated)
@@ -65,42 +66,39 @@ class MoraleManager:
         
     def _emit_log(self, message: str, category: str = "MORALE", level: str = "INFO") -> None:
         """Emit a log message event."""
+        # Map string level to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
         self.event_manager.publish(
             LogMessage(
-                turn=self.current_turn,
+                timeline_time=self.game_state.battle.timeline.current_time,
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="MoraleManager"
             ),
             source="MoraleManager"
         )
         
-    def _on_unit_took_damage(self, event: GameEvent) -> None:
-        """Handle unit took damage event for morale processing."""
-        assert isinstance(event, UnitTookDamage), f"Expected UnitTookDamage, got {type(event)}"
-        # Find the unit that took damage
-        for unit in self.game_map.units:
-            actor = unit.entity.get_component("Actor")
-            assert actor is not None, f"Unit {unit.unit_id} missing Actor component"
-            assert isinstance(actor, ActorComponent), f"Actor component for {unit.unit_id} is not ActorComponent"
-            if actor.name == event.unit_name:
-                # Process morale effects from damage
-                self.process_unit_damage(unit.entity, event.damage_amount)
-                break
+    def _on_unit_damaged(self, event: GameEvent) -> None:
+        """Handle unit damaged event for morale processing."""
+        assert isinstance(event, UnitDamaged), f"Expected UnitDamaged, got {type(event)}"
+        # The event already has the unit that took damage
+        unit = event.unit
+        # Process morale effects from damage
+        self.process_unit_damage(unit.entity, event.damage)
     
     def _on_unit_defeated(self, event: GameEvent) -> None:
         """Handle unit defeated event for morale processing."""
         assert isinstance(event, UnitDefeated), f"Expected UnitDefeated, got {type(event)}"
-        # Find the defeated unit
-        for unit in self.game_map.units:
-            actor = unit.entity.get_component("Actor")
-            assert actor is not None, f"Unit {unit.unit_id} missing Actor component"
-            assert isinstance(actor, ActorComponent), f"Actor component for {unit.unit_id} is not ActorComponent"
-            if actor.name == event.unit_name:
-                # Process morale effects from death
-                self.process_unit_death(unit.entity)
-                break
+        # Process morale effects from death using the unit directly from the event
+        self.process_unit_death(event.unit.entity)
     
     def _on_battle_phase_changed(self, event: GameEvent) -> None:
         """Handle battle phase change for morale processing."""
@@ -421,18 +419,19 @@ class MoraleManager:
             new_morale: New morale value
         """
         
-        actor = entity.get_component("Actor")
-        position = self._get_entity_position(entity)
+        # Find the unit that corresponds to this entity
+        unit = None
+        for map_unit in self.game_map.units:
+            if map_unit.entity is entity:
+                unit = map_unit
+                break
         
-        if actor and position:
-            actor_cast = cast('ActorComponent', actor)
+        if unit:
             event = MoraleChanged(
-                turn=self.current_turn,
-                unit_name=actor_cast.name,
-                team=actor_cast.team,
+                timeline_time=self.game_state.battle.timeline.current_time,
+                unit=unit,
                 old_morale=old_morale,
-                new_morale=new_morale,
-                position=(position.y, position.x)
+                new_morale=new_morale
             )
             self.event_manager.publish(event, source="MoraleManager")
     
@@ -444,22 +443,32 @@ class MoraleManager:
             reason: Reason for panic
         """
         
-        actor = entity.get_component("Actor")
-        position = self._get_entity_position(entity)
+        # Find the unit that corresponds to this entity
+        unit = None
+        for map_unit in self.game_map.units:
+            if map_unit.entity is entity:
+                unit = map_unit
+                break
         
-        if actor and position:
-            actor_cast = cast('ActorComponent', actor)
+        if unit:
+            # Map reason string to PanicTrigger enum
+            trigger_map = {
+                "low morale": PanicTrigger.LOW_MORALE,
+                "ally death": PanicTrigger.ALLY_DEATH,
+                "heavy damage": PanicTrigger.HEAVY_DAMAGE,
+                "overwhelming odds": PanicTrigger.OVERWHELMING_ODDS
+            }
+            trigger = trigger_map.get(reason.lower(), PanicTrigger.LOW_MORALE)
+            
             event = UnitPanicked(
-                turn=self.current_turn,
-                unit_name=actor_cast.name,
-                team=actor_cast.team,
-                position=(position.y, position.x),
-                trigger_reason=reason
+                timeline_time=self.game_state.battle.timeline.current_time,
+                unit=unit,
+                trigger=trigger
             )
             self.event_manager.publish(event, source="MoraleManager")
             
             # Log the panic event
-            self._emit_log(f"{actor_cast.name}: Panicked ({reason})", "BATTLE")
+            self._emit_log(f"{unit.name}: Panicked ({reason})", "BATTLE")
     
     def _emit_rout_event(self, entity: "Entity") -> None:
         """Emit unit routed event.
@@ -468,21 +477,22 @@ class MoraleManager:
             entity: Entity that routed
         """
         
-        actor = entity.get_component("Actor")
-        position = self._get_entity_position(entity)
+        # Find the unit that corresponds to this entity
+        unit = None
+        for map_unit in self.game_map.units:
+            if map_unit.entity is entity:
+                unit = map_unit
+                break
         
-        if actor and position:
-            actor_cast = cast('ActorComponent', actor)
+        if unit:
             event = UnitRouted(
-                turn=self.current_turn,
-                unit_name=actor_cast.name,
-                team=actor_cast.team,
-                position=(position.y, position.x)
+                timeline_time=self.game_state.battle.timeline.current_time,
+                unit=unit
             )
             self.event_manager.publish(event, source="MoraleManager")
             
             # Log the rout event
-            self._emit_log(f"{actor_cast.name}: Routed (fleeing battlefield)", "BATTLE")
+            self._emit_log(f"{unit.name}: Routed (fleeing battlefield)", "BATTLE")
     
     def _emit_rally_event(self, entity: "Entity") -> None:
         """Emit unit rallied event.
@@ -491,18 +501,19 @@ class MoraleManager:
             entity: Entity that rallied
         """
         
-        actor = entity.get_component("Actor")
-        position = self._get_entity_position(entity)
+        # Find the unit that corresponds to this entity
+        unit = None
+        for map_unit in self.game_map.units:
+            if map_unit.entity is entity:
+                unit = map_unit
+                break
         
-        if actor and position:
-            actor_cast = cast('ActorComponent', actor)
+        if unit:
             event = UnitRallied(
-                turn=self.current_turn,
-                unit_name=actor_cast.name,
-                team=actor_cast.team,
-                position=(position.y, position.x)
+                timeline_time=self.game_state.battle.timeline.current_time,
+                unit=unit
             )
             self.event_manager.publish(event, source="MoraleManager")
             
             # Log the rally event
-            self._emit_log(f"{actor_cast.name}: Rallied (regained courage)", "BATTLE")
+            self._emit_log(f"{unit.name}: Rallied (regained courage)", "BATTLE")

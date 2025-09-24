@@ -7,10 +7,10 @@ for handling different types of user input actions.
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Any
 
-from ..engine.actions import ActionResult
-from ..engine.game_state import BattlePhase
-from ..data.data_structures import VectorArray, Vector2
-from ..events.events import ActionSelected
+from ..engine import ActionResult, BattlePhase
+from ..data import VectorArray, Vector2
+from ..events import BattlePhaseChanged
+from ..events.events import CursorMoved, DebugMessage
 
 if TYPE_CHECKING:
     from ...game.input_handler import InputHandler
@@ -87,19 +87,18 @@ class MoveCursorCommand(Command):
             handler.log_manager.debug(f"MoveCursor: {old_pos} -> {new_pos} (delta: {self.dx}, {self.dy})")
         
         # Emit cursor moved event for systems that need to react to cursor changes
-        from ..events.events import CursorMoved
         handler.event_manager.publish(
             CursorMoved(
-                turn=handler.state.battle.current_turn,
-                from_position=(old_pos.y, old_pos.x),
-                to_position=(new_pos.y, new_pos.x),
-                context="targeting" if handler.state.battle.phase.name in ["ACTION_EXECUTION", "ACTION_TARGETING"] else "navigation"
+                timeline_time=handler.state.battle.timeline.current_time,
+                from_position=old_pos,
+                to_position=new_pos,
+                context="targeting" if handler.state.battle.phase in [BattlePhase.ACTION_EXECUTION, BattlePhase.ACTION_TARGETING] else "navigation"
             ),
             source="MoveCursorCommand"
         )
         
         # For targeting phases, also update attack targeting immediately
-        if handler.state.battle.phase.name in ["ACTION_EXECUTION", "ACTION_TARGETING"]:
+        if handler.state.battle.phase in [BattlePhase.ACTION_EXECUTION, BattlePhase.ACTION_TARGETING]:
             if hasattr(handler, 'combat_manager') and handler.combat_manager:
                 handler.combat_manager.update_attack_targeting()
         
@@ -175,29 +174,28 @@ class ConfirmSelectionCommand(Command):
         phase = handler.state.battle.phase
 
         # Log using event system
-        from ..events.events import DebugMessage
         handler.event_manager.publish(
-            DebugMessage(turn=0, message=f"ConfirmSelection: cursor at {cursor_position}, phase: {phase.name}", source="ConfirmSelectionCommand"),
+            DebugMessage(timeline_time=0, message=f"ConfirmSelection: cursor at {cursor_position}, phase: {phase.name}", source="ConfirmSelectionCommand"),
             source="ConfirmSelectionCommand"
         )
 
-        # Check phase names correctly - timeline system uses different phases
-        if phase.name == "INSPECT":
+        # Check phases correctly - timeline system uses enum phases
+        if phase == BattlePhase.INSPECT:
             return handler._handle_inspect_confirm(cursor_position)
-        elif phase.name in ["UNIT_SELECTION", "TIMELINE_PROCESSING"]:
+        elif phase in [BattlePhase.UNIT_SELECTION, BattlePhase.TIMELINE_PROCESSING]:
             return handler._handle_unit_selection_confirm(cursor_position)
-        elif phase.name == "UNIT_MOVING":
+        elif phase == BattlePhase.UNIT_MOVING:
             # Log using event system
             handler.event_manager.publish(
-                DebugMessage(turn=0, message="Calling _handle_unit_movement_confirm for UNIT_MOVING phase", source="ConfirmSelectionCommand"),
+                DebugMessage(timeline_time=0, message="Calling _handle_unit_movement_confirm for UNIT_MOVING phase", source="ConfirmSelectionCommand"),
                 source="ConfirmSelectionCommand"
             )
             return handler._handle_unit_movement_confirm(cursor_position)
-        elif phase.name in ["ACTION_MENU", "UNIT_ACTION_SELECTION"]:
+        elif phase == BattlePhase.UNIT_ACTION_SELECTION:
             return handler._handle_action_menu_confirm()
-        elif phase.name == "ACTION_TARGETING":
+        elif phase == BattlePhase.ACTION_TARGETING:
             return handler._handle_action_targeting_confirm(cursor_position)
-        elif phase.name == "ACTION_EXECUTION":
+        elif phase == BattlePhase.ACTION_EXECUTION:
             return handler._handle_unit_acting_confirm()
         
         return False
@@ -215,24 +213,40 @@ class CancelActionCommand(Command):
             
         phase = handler.state.battle.phase
         
-        if phase.name == "INSPECT":
+        if phase == BattlePhase.INSPECT:
             # Exit inspect mode - same as pressing V
-            if handler.state.battle.previous_phase:
-                handler.state.battle.phase = handler.state.battle.previous_phase
-                handler.state.battle.previous_phase = None
-            else:
-                handler.state.battle.phase = BattlePhase.TIMELINE_PROCESSING
+            old_phase = phase
+            new_phase = handler.state.battle.previous_phase or BattlePhase.TIMELINE_PROCESSING
+            
+            # Update phase state
+            handler.state.battle.phase = new_phase
+            handler.state.battle.previous_phase = None
+            
+            # Emit phase change event so other managers can react
+            # Get current unit for the event if available
+            unit = None
+            if handler.state.battle.selected_unit_id and hasattr(handler, 'game_map') and handler.game_map:
+                unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
+            
+            handler.event_manager.publish(
+                BattlePhaseChanged(
+                    timeline_time=handler.state.battle.timeline.current_time,
+                    old_phase=old_phase,
+                    new_phase=new_phase,
+                    unit=unit
+                ),
+                source="CancelActionCommand"
+            )
+            
             if handler.log_manager:
                 handler.log_manager.ui("Inspect mode ended")
-        elif phase.name == "UNIT_MOVING":
+        elif phase == BattlePhase.UNIT_MOVING:
             handler._handle_movement_cancel()
-        elif phase.name in ["ACTION_MENU", "UNIT_ACTION_SELECTION"]:
+        elif phase == BattlePhase.UNIT_ACTION_SELECTION:
             handler.action_menu_cancel()
-        elif phase.name == "TARGETING":
-            handler._handle_targeting_cancel()
-        elif phase.name == "ACTION_TARGETING":
+        elif phase == BattlePhase.ACTION_TARGETING:
             handler._handle_action_targeting_cancel()
-        elif phase.name == "ACTION_EXECUTION":
+        elif phase == BattlePhase.ACTION_EXECUTION:
             handler._handle_unit_acting_cancel()
         
         return True
@@ -287,53 +301,21 @@ class QuitGameCommand(Command):
 
 
 class DirectAttackCommand(Command):
-    """Command for initiating a direct attack."""
+    """Command for selecting attack action directly (shortcut for action menu)."""
     
     def execute(self, handler: "InputHandler") -> bool:
-        """Handle direct attack based on current game state."""
-        # Only allow during player turn and when a unit is selected
-        if handler.state.battle.current_team != 0 or not handler.state.battle.selected_unit_id:
+        """Select the attack action directly as a shortcut."""
+        # Check if a unit is selected and can act
+        if not handler.state.battle.selected_unit_id:
             return False
 
         assert handler.game_map is not None, "Game map must be loaded before executing combat commands"
         unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
-        if not unit or not unit.can_act or not handler.combat_manager:
+        if not unit or not unit.can_act:
             return False
         
-        phase = handler.state.battle.phase
-        
-        # Handle quick attack based on current phase
-        if phase.name == "UNIT_SELECTION":
-            # Unit just selected, transition to attack directly
-            handler.event_manager.publish(
-                ActionSelected(
-                    turn=handler.state.battle.current_turn,
-                    unit_name=unit.name,
-                    unit_id=unit.unit_id,
-                    action_name="Quick Attack",
-                    action_type="Attack"
-                ),
-                source="QuickAttackCommand"
-            )
-            handler.combat_manager.setup_attack_targeting(unit)
-        elif phase.name == "UNIT_MOVING":
-            # Unit is in movement, skip to attack
-            handler.state.battle.movement_range = VectorArray()
-            handler.event_manager.publish(
-                ActionSelected(
-                    turn=handler.state.battle.current_turn,
-                    unit_name=unit.name,
-                    unit_id=unit.unit_id,
-                    action_name="Quick Attack",
-                    action_type="Attack"
-                ),
-                source="QuickAttackCommand"
-            )
-            handler.combat_manager.setup_attack_targeting(unit)
-        elif phase.name == "ACTION_MENU":
-            # Use normal action selection
-            handler._handle_action_selection("Attack")
-        
+        # Simply select the "Attack" action through normal action selection flow
+        handler._handle_action_selection("Attack")
         return True
 
 
@@ -371,25 +353,61 @@ class StartInspectModeCommand(Command):
         
         if current_phase == BattlePhase.INSPECT:
             # Exit inspect mode - restore previous phase
-            if handler.state.battle.previous_phase:
-                handler.state.battle.phase = handler.state.battle.previous_phase
-                handler.state.battle.previous_phase = None
-            else:
-                # Fallback to timeline processing if no previous phase stored
-                handler.state.battle.phase = BattlePhase.TIMELINE_PROCESSING
+            old_phase = current_phase
+            new_phase = handler.state.battle.previous_phase or BattlePhase.TIMELINE_PROCESSING
+            
+            # Update phase state
+            handler.state.battle.phase = new_phase
+            handler.state.battle.previous_phase = None
+            
+            # Emit phase change event so other managers can react
+            # Get current unit for the event if available
+            unit = None
+            if handler.state.battle.selected_unit_id and hasattr(handler, 'game_map') and handler.game_map:
+                unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
+            
+            handler.event_manager.publish(
+                BattlePhaseChanged(
+                    timeline_time=handler.state.battle.timeline.current_time,
+                    old_phase=old_phase,
+                    new_phase=new_phase,
+                    unit=unit
+                ),
+                source="StartInspectModeCommand"
+            )
             
             if handler.log_manager:
                 handler.log_manager.ui("Inspect mode ended")
         else:
             # Enter inspect mode
+            old_phase = current_phase
+            new_phase = BattlePhase.INSPECT
+            
+            # Update phase state
             handler.state.battle.previous_phase = current_phase
-            handler.state.battle.phase = BattlePhase.INSPECT
+            handler.state.battle.phase = new_phase
             
             # Clear any active selections to free up the cursor
             handler.state.battle.movement_range = VectorArray()
             handler.state.battle.attack_range = VectorArray() 
             handler.state.battle.aoe_tiles = VectorArray()
             handler.state.ui.close_action_menu()
+            
+            # Emit phase change event so other managers can react
+            # Get current unit for the event if available
+            unit = None
+            if handler.state.battle.selected_unit_id and hasattr(handler, 'game_map') and handler.game_map:
+                unit = handler.game_map.get_unit(handler.state.battle.selected_unit_id)
+            
+            handler.event_manager.publish(
+                BattlePhaseChanged(
+                    timeline_time=handler.state.battle.timeline.current_time,
+                    old_phase=old_phase,
+                    new_phase=new_phase,
+                    unit=unit
+                ),
+                source="StartInspectModeCommand"
+            )
             
             if handler.log_manager:
                 handler.log_manager.ui("Inspect mode active - use arrow keys to explore, V to exit")

@@ -2,7 +2,7 @@ from typing import Optional
 from collections import defaultdict
 
 from ..core.renderer import Renderer, RendererConfig
-from ..core.entities.renderable import (
+from ..core.entities import (
     RenderContext, TileRenderData, UnitRenderData, 
     CursorRenderData, OverlayTileRenderData, LayerType
 )

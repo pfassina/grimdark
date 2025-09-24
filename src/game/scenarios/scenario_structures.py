@@ -8,7 +8,7 @@ unit data for loading.
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Optional
-from ...core.data.data_structures import Vector2
+from ...core.data import Vector2
 
 if TYPE_CHECKING:
     from ..map import GameMap

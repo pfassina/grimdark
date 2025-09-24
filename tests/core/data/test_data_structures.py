@@ -6,8 +6,8 @@ throughout the timeline-based game architecture.
 """
 
 import pytest
-from src.core.data.data_structures import Vector2
-from src.core.engine.game_state import GamePhase, BattlePhase, CursorState
+from src.core.data import Vector2
+from src.core.engine import GamePhase, BattlePhase, CursorState
 
 
 class TestVector2:

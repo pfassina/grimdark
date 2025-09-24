@@ -9,9 +9,10 @@ from abc import ABC
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-from ...core.events.events import EventType, ObjectiveContext
-from ...core.data.game_enums import ObjectiveStatus, ObjectiveType
-from ...core.data.data_structures import Vector2
+from ...core.events import EventType, ObjectiveContext
+from ...core.events.events import UnitDefeated, UnitSpawned, UnitMoved
+from ...core.data import ObjectiveStatus, ObjectiveType, Vector2
+from ...core.data.game_enums import Team
 
 if TYPE_CHECKING:
     from ...core.game_view import GameView
@@ -79,14 +80,12 @@ class DefeatAllEnemiesObjective(Objective):
 
     def on_event(self, context: ObjectiveContext) -> None:
         """Update enemy count and objective status based on events."""
-        from ...core.events.events import UnitDefeated, UnitSpawned
-        from ...core.data.game_enums import Team
 
         if isinstance(context.event, UnitSpawned):
-            if context.event.team == Team.ENEMY:
+            if context.event.unit.team == Team.ENEMY:
                 self._enemy_count += 1
         elif isinstance(context.event, UnitDefeated):
-            if context.event.team == Team.ENEMY:
+            if context.event.unit.team == Team.ENEMY:
                 self._enemy_count -= 1
 
         # Update status based on enemy count
@@ -97,7 +96,6 @@ class DefeatAllEnemiesObjective(Objective):
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
         """Initialize enemy count from current game state."""
-        from ...core.data.game_enums import Team
 
         self._enemy_count = view.count_units(Team.ENEMY, alive=True)
 
@@ -132,14 +130,12 @@ class ReachPositionObjective(Objective):
 
     def on_event(self, context: ObjectiveContext) -> None:
         """Check if unit reached target position or was defeated."""
-        from ...core.events.events import UnitDefeated, UnitMoved
-        from ...core.data.game_enums import Team
 
         if isinstance(context.event, UnitMoved):
             # Check if a player unit reached the target position
-            if context.event.team == Team.PLAYER and context.event.to_position == self.target_position:
+            if context.event.unit.team == Team.PLAYER and context.event.unit.position == self.target_position:
                 # If no specific unit required, or the right unit moved there
-                if self.unit_name is None or context.event.unit_name == self.unit_name:
+                if self.unit_name is None or context.event.unit.name == self.unit_name:
                     self.status = ObjectiveStatus.COMPLETED
                     return
 
@@ -147,8 +143,8 @@ class ReachPositionObjective(Objective):
             # Check if the required unit was defeated
             if (
                 self.unit_name
-                and context.event.unit_name == self.unit_name
-                and context.event.team == Team.PLAYER
+                and context.event.unit.name == self.unit_name
+                and context.event.unit.team == Team.PLAYER
             ):
                 self.status = ObjectiveStatus.FAILED
                 return
@@ -157,7 +153,6 @@ class ReachPositionObjective(Objective):
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
         """Check current game state for position occupancy and unit existence."""
-        from ...core.data.game_enums import Team
 
         # Check if target position is occupied by appropriate unit
         unit_at_pos = view.get_unit_at(self.target_position)
@@ -192,10 +187,9 @@ class DefeatUnitObjective(Objective):
 
     def on_event(self, context: ObjectiveContext) -> None:
         """Check if target unit was defeated."""
-        from ...core.events.events import UnitDefeated
 
         if isinstance(context.event, UnitDefeated):
-            if context.event.unit_name == self.target_unit_name:
+            if context.event.unit.name == self.target_unit_name:
                 self.status = ObjectiveStatus.COMPLETED
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
@@ -224,10 +218,9 @@ class ProtectUnitObjective(Objective):
 
     def on_event(self, context: ObjectiveContext) -> None:
         """Check if protected unit was defeated."""
-        from ...core.events.events import UnitDefeated
 
         if isinstance(context.event, UnitDefeated):
-            if context.event.unit_name == self.protected_unit_name:
+            if context.event.unit.name == self.protected_unit_name:
                 self.status = ObjectiveStatus.FAILED
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
@@ -256,16 +249,13 @@ class PositionCapturedObjective(Objective):
 
     def on_event(self, context: ObjectiveContext) -> None:
         """Check if enemy unit moved to protected position."""
-        from ...core.events.events import UnitMoved
-        from ...core.data.game_enums import Team
 
         if isinstance(context.event, UnitMoved):
-            if context.event.team == Team.ENEMY and context.event.to_position == self.position:
+            if context.event.unit.team == Team.ENEMY and context.event.unit.position == self.position:
                 self.status = ObjectiveStatus.FAILED
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
         """Check if position is currently occupied by enemy."""
-        from ...core.data.game_enums import Team
 
         unit_at_pos = view.get_unit_at(self.position)
         if unit_at_pos and unit_at_pos.team == Team.ENEMY:
@@ -291,14 +281,12 @@ class AllUnitsDefeatedObjective(Objective):
 
     def on_event(self, context: ObjectiveContext) -> None:
         """Update player unit count and objective status."""
-        from ...core.events.events import UnitDefeated, UnitSpawned
-        from ...core.data.game_enums import Team
 
         if isinstance(context.event, UnitSpawned):
-            if context.event.team == Team.PLAYER:
+            if context.event.unit.team == Team.PLAYER:
                 self._player_count += 1
         elif isinstance(context.event, UnitDefeated):
-            if context.event.team == Team.PLAYER:
+            if context.event.unit.team == Team.PLAYER:
                 self._player_count -= 1
 
         # Update status based on player count
@@ -309,7 +297,6 @@ class AllUnitsDefeatedObjective(Objective):
 
     def recompute(self, view: "GameView") -> ObjectiveStatus:
         """Initialize player unit count from current game state."""
-        from ...core.data.game_enums import Team
 
         self._player_count = view.count_units(Team.PLAYER, alive=True)
 

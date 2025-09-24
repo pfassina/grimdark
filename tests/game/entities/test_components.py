@@ -6,10 +6,8 @@ Combat, and Status components, as well as the Unit wrapper class.
 """
 
 import pytest
-from src.core.data.data_structures import Vector2
-from src.core.data.game_enums import UnitClass, Team
-from src.game.entities.components import ActorComponent, HealthComponent, MovementComponent, CombatComponent, StatusComponent
-from src.game.entities.unit import Unit
+from src.core.data import Vector2, UnitClass, Team
+from src.game.entities import ActorComponent, HealthComponent, MovementComponent, CombatComponent, StatusComponent, Unit
 
 
 class MockEntity:

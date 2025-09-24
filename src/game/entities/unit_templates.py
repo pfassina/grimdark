@@ -9,14 +9,25 @@ import os
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Union
 
-from ...core.data.data_structures import Vector2
-from ...core.data.game_enums import UnitClass
+import yaml
+
+from ...core.data import Vector2, UnitClass, AOEPattern
+from ...core.entities import Entity
+from ..ai.ai_behaviors import AIType, create_ai_behavior
+from .components import (
+    ActorComponent,
+    AIComponent,
+    CombatComponent,
+    HealthComponent,
+    InterruptComponent,
+    MoraleComponent,
+    MovementComponent,
+    StatusComponent,
+    WoundComponent,
+)
 
 if TYPE_CHECKING:
-    from ...core.entities.components import Entity
     from ...core.data.game_enums import Team
-
-import yaml
 
 
 @dataclass
@@ -122,20 +133,6 @@ def create_unit_entity(
     Returns:
         Entity with all components configured according to class template
     """
-    from ...core.entities.components import Entity
-    from ..ai.ai_behaviors import AIType, create_ai_behavior
-    from .components import (
-        ActorComponent,
-        AIComponent,
-        CombatComponent,
-        HealthComponent,
-        InterruptComponent,
-        MoraleComponent,
-        MovementComponent,
-        StatusComponent,
-        WoundComponent,
-    )
-
     # Get template for this unit class
     template = get_template(unit_class)
 
@@ -156,7 +153,7 @@ def create_unit_entity(
             defense=int(combat_params["defense"]),
             attack_range_min=int(combat_params["attack_range_min"]),
             attack_range_max=int(combat_params["attack_range_max"]),
-            aoe_pattern=str(combat_params.get("aoe_pattern", "single")),
+            aoe_pattern=AOEPattern(combat_params.get("aoe_pattern", "single")),
         )
     )
 

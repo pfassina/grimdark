@@ -6,7 +6,7 @@ allowing the UI to show damage/hit/crit predictions without affecting game state
 """
 import random
 
-from ...core.entities.renderable import BattleForecastRenderData
+from ...core.entities import BattleForecastRenderData
 from ..entities.unit import Unit
 
 

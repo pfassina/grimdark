@@ -6,9 +6,12 @@ from typing import Any, Optional
 
 import yaml
 
-from ...core.data.data_structures import DataConverter, Vector2
-from ...core.events.events import LogMessage, UnitSpawned
+from ...core.data import DataConverter, Vector2
+from ...core.events import LogMessage, UnitSpawned
+from ...core.tileset_loader import get_tileset_config
+from ...game.managers.log_manager import LogLevel
 from ..map import GameMap
+from ..tile import TerrainType
 from .objectives import (
     AllUnitsDefeatedObjective,
     DefeatAllEnemiesObjective,
@@ -333,9 +336,6 @@ class ScenarioLoader:
         - tile_patches: List of coordinate-based tile changes
         - region_patches: Region-based tile changes
         """
-        from ...core.tileset_loader import get_tileset_config
-        from ..tile import TerrainType
-
         tileset_config = get_tileset_config()
 
         # Apply tile patches
@@ -518,19 +518,17 @@ class ScenarioLoader:
                     if event_manager:
                         event_manager.publish(
                             UnitSpawned(
-                                turn=0,  # Initial placement
-                                unit_name=unit.name,
-                                team=unit.team,
-                                position=(unit.position.x, unit.position.y),
+                                timeline_time=0,  # Initial placement
+                                unit=unit,
                             ),
                             source="ScenarioLoader",
                         )
                         event_manager.publish(
                             LogMessage(
-                                turn=0,
+                                timeline_time=0,
                                 message=f"Unit {unit.name} spawned at {unit.position}",
                                 category="SCENARIO",
-                                level="INFO",
+                                level=LogLevel.INFO,
                                 source="ScenarioLoader",
                             ),
                             source="ScenarioLoader",

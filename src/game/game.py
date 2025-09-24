@@ -9,23 +9,19 @@ to specialized manager classes.
 import time
 from typing import Optional, TypeVar
 
-from ..core.events.event_manager import EventManager
-from ..core.events.events import GameEnded, GameStarted, LogMessage, ScenarioLoaded
-from ..core.engine.game_state import BattlePhase, GamePhase, GameState
+from ..core.events import EventManager, GameEnded, GameStarted, LogMessage, ScenarioLoaded
+from .managers import (
+    CombatManager, LogManager, LogLevel, PhaseManager, ScenarioManager,
+    SelectionManager, TimelineManager, UIManager
+)
+from .combat import CombatResolver
+from ..core.engine import GameState, BattlePhase, GamePhase
 from ..core.input import InputType
 from ..core.renderer import Renderer
 from .input_handler import InputHandler
 from .map import GameMap
 from .render_builder import RenderBuilder
-from .managers.combat_manager import CombatManager
-from .managers.log_manager import LogManager
-from .managers.phase_manager import PhaseManager
-from .managers.scenario_manager import ScenarioManager
-from .managers.selection_manager import SelectionManager
-from .managers.timeline_manager import TimelineManager
-from .managers.ui_manager import UIManager
-from .scenarios.scenario import Scenario
-from .scenarios.scenario_menu import ScenarioMenu
+from .scenarios import Scenario, ScenarioMenu
 
 
 TManager = TypeVar("TManager")
@@ -60,6 +56,7 @@ class Game:
         self._phase_manager: Optional[PhaseManager] = None
         self._ui_manager: Optional[UIManager] = None
         self._combat_manager: Optional[CombatManager] = None
+        self._combat_resolver: Optional[CombatResolver] = None
         self._input_handler: Optional[InputHandler] = None
         self._timeline_manager: Optional[TimelineManager] = None
         self._render_builder: Optional[RenderBuilder] = None
@@ -89,6 +86,10 @@ class Game:
     @property
     def combat_manager(self) -> CombatManager:
         return self._require_manager(self._combat_manager, "CombatManager")
+
+    @property
+    def combat_resolver(self) -> CombatResolver:
+        return self._require_manager(self._combat_resolver, "CombatResolver")
 
     @property
     def timeline_manager(self) -> TimelineManager:
@@ -132,7 +133,7 @@ class Game:
             # Emit scenario loaded event (PhaseManager will handle the phase transition)
             self.event_manager.publish(
                 ScenarioLoaded(
-                    turn=0,
+                    timeline_time=0,
                     scenario_name=self.scenario.name,
                     scenario_path=getattr(self.scenario, "filepath", "unknown"),
                 ),
@@ -162,7 +163,7 @@ class Game:
         # Emit game started event
         self.event_manager.publish(
             GameStarted(
-                turn=0, scenario_name=self.scenario.name if self.scenario else None
+                timeline_time=0, scenario_name=self.scenario.name if self.scenario else None
             ),
             source="Game",
         )
@@ -244,6 +245,13 @@ class Game:
             event_manager=self.event_manager,
         )
 
+        # Combat Resolver - handles actual damage application
+        self._combat_resolver = CombatResolver(
+            game_map=game_map,
+            event_manager=self.event_manager,
+            morale_manager=None  # TODO: Add when morale manager exists
+        )
+
         # Timeline Manager
         self._timeline_manager = TimelineManager(
             game_map=game_map,
@@ -285,12 +293,12 @@ class Game:
         self.input_handler.on_load_selected_scenario = self.load_selected_scenario
 
     def _emit_log(
-        self, message: str, category: str = "SYSTEM", level: str = "INFO"
+        self, message: str, category: str = "SYSTEM", level: "LogLevel" = LogLevel.INFO
     ) -> None:
         """Emit a log message event."""
         self.event_manager.publish(
             LogMessage(
-                turn=self.state.battle.current_turn,
+                timeline_time=self.state.battle.timeline.current_time,
                 message=message,
                 category=category,
                 level=level,
@@ -392,7 +400,7 @@ class Game:
         """Clean up resources."""
         # Emit game ended event
         self.event_manager.publish(
-            GameEnded(turn=0, result="quit", reason="cleanup"), source="Game"
+            GameEnded(timeline_time=0, result="quit", reason="cleanup"), source="Game"
         )
 
         # Process final events

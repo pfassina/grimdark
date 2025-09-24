@@ -1,8 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ..data.game_enums import LayerType, TerrainType
-from ..data.data_structures import Vector2
+from ..data import LayerType, TerrainType, Vector2
 
 
 @dataclass

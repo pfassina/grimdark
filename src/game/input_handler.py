@@ -17,26 +17,22 @@ if TYPE_CHECKING:
     from ..core.engine.game_state import GameState
     from ..core.renderer import Renderer
     from .managers.combat_manager import CombatManager
+    from .managers.log_manager import LogManager
     from .map import GameMap
     from .scenarios.scenario_menu import ScenarioMenu
     from .managers.timeline_manager import TimelineManager
     from .managers.ui_manager import UIManager
     from .entities.unit import Unit
 
-from ..core.engine.actions import ActionResult
-from ..core.data.data_structures import Vector2, VectorArray
-from ..core.events.event_manager import EventPriority
-from ..core.events.events import (
-    ActionCanceled,
-    ActionSelected,
-    LogMessage,
-    LogSaveRequested,
-    ManagerInitialized,
-    MovementCanceled,
-    UnitMoved,
+from ..core.engine.actions import ActionResult, create_action_by_name
+from ..core.engine import BattlePhase
+from ..core.data import Vector2, VectorArray, Team
+from ..core.events import (
+    EventPriority, ActionCanceled, ActionSelected, LogMessage,
+    LogSaveRequested, ManagerInitialized, MovementCanceled, UnitMoved
 )
-from ..core.data.game_enums import Team
-from ..core.engine.game_state import BattlePhase
+from .managers import LogLevel
+from .managers.log_manager import LogManager
 from ..core.input import InputEvent, InputType
 
 # Import our new modular components
@@ -74,7 +70,6 @@ class InputHandler:
         self._timeline_manager: Optional["TimelineManager"] = None
 
         # Initialize log manager for error logging
-        from .managers.log_manager import LogManager
 
         self.log_manager = LogManager(event_manager, game_state)
 
@@ -93,7 +88,7 @@ class InputHandler:
 
         # Emit initialization event
         self.event_manager.publish(
-            ManagerInitialized(turn=0, manager_name="InputHandler"),
+            ManagerInitialized(timeline_time=0, manager_name="InputHandler"),
             source="InputHandler",
         )
 
@@ -142,16 +137,26 @@ class InputHandler:
         self, message: str, category: str = "INPUT", level: str = "INFO"
     ) -> None:
         """Emit a log message event."""
-        current_turn = getattr(self.state, "turn", 0)
-        if hasattr(self.state, "battle") and hasattr(self.state.battle, "current_turn"):
-            current_turn = self.state.battle.current_turn
+        # Map string level to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
+        # Get timeline time
+        timeline_time = 0
+        if hasattr(self.state, "battle") and hasattr(self.state.battle, "timeline"):
+            timeline_time = self.state.battle.timeline.current_time
 
         self.event_manager.publish(
             LogMessage(
-                turn=current_turn,
+                timeline_time=timeline_time,
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="InputHandler",
             ),
             source="InputHandler",
@@ -272,8 +277,17 @@ class InputHandler:
         self._handle_dialog_confirmation()
 
     def action_dialog_cancel(self) -> None:
-        """Cancel dialog."""
-        self.state.ui.close_dialog()
+        """Cancel dialog - same as selecting 'Cancel' option."""
+        # Get the current dialog type
+        dialog_type = self.state.ui.active_dialog
+        
+        if dialog_type == "confirm_friendly_fire":
+            # Set selection to Cancel (option 1) and handle as confirmation
+            self.state.ui.dialog_selection = 1  # 1 = Cancel option
+            self._handle_dialog_confirmation()
+        else:
+            # For other dialogs, just close
+            self.state.ui.close_dialog()
 
     def action_menu_move_up(self) -> None:
         """Move menu selection up."""
@@ -322,10 +336,9 @@ class InputHandler:
             self._build_action_menu_for_unit(unit)
             self.event_manager.publish(
                 ActionCanceled(
-                    turn=self.state.battle.current_turn,
-                    unit_name=unit.name,
-                    unit_id=unit.unit_id,
-                    canceled_action="targeting",
+                    timeline_time=self.state.battle.timeline.current_time,
+                    unit=unit,
+                    canceled_action=None,  # No specific action was selected yet, just targeting
                     return_to_phase="UNIT_ACTION_SELECTION",
                 ),
                 priority=EventPriority.HIGH,
@@ -337,18 +350,15 @@ class InputHandler:
             self.state.ui.close_action_menu()
             # Get the original position from when the unit's turn started
             original_pos = self.state.battle.original_unit_position
-            if original_pos:
-                original_position = (original_pos.y, original_pos.x)
-            else:
+            if not original_pos:
                 # Fallback to current position if no original stored
-                original_position = (unit.position.y, unit.position.x)
+                original_pos = unit.position
 
             self.event_manager.publish(
                 MovementCanceled(
-                    turn=self.state.battle.current_turn,
-                    unit_name=unit.name,
-                    unit_id=unit.unit_id,
-                    original_position=original_position,
+                    timeline_time=self.state.battle.timeline.current_time,
+                    unit=unit,
+                    original_position=original_pos,
                 ),
                 priority=EventPriority.HIGH,
                 source="InputHandler",
@@ -433,8 +443,40 @@ class InputHandler:
 
         # Handle confirm_friendly_fire
         if dialog_type == "confirm_friendly_fire":
-            if selection == 0 and self.combat_manager:  # Yes - proceed with attack
-                self.combat_manager.execute_confirmed_attack()
+            if selection == 0:  # Yes - proceed with attack despite friendly fire
+                # Force execute the pending action with the already-selected target
+                # The pending action and target are already set, we just need to bypass the friendly fire check
+                if self.state.battle.pending_action and self.state.battle.pending_action_target:
+                    # Directly execute with the pending target
+                    result = self.timeline_manager.execute_unit_action(
+                        self.state.battle.pending_action, 
+                        self.state.battle.pending_action_target,
+                        bypass_friendly_fire=True
+                    )
+                    if result == ActionResult.SUCCESS:
+                        self._emit_log("Attack executed with friendly fire", category="BATTLE")
+                    else:
+                        self._emit_log("Attack failed", level="WARNING")
+                else:
+                    self._emit_log("No pending action to execute", level="WARNING")
+            else:  # Cancel - go back to ACTION_TARGETING to select a different target
+                # Don't clear the pending action - keep it for selecting a different target
+                self._emit_log("Attack cancelled - select a different target", category="BATTLE")
+                
+                # Emit ACTION_CANCELED to transition back to ACTION_TARGETING phase
+                unit_id = self.state.battle.current_acting_unit_id
+                assert unit_id is not None, "current_acting_unit_id must be set when in ACTION_EXECUTION phase"
+                unit = self.game_map.get_unit(unit_id)
+                assert unit is not None, f"Unit {unit_id} must exist when in ACTION_EXECUTION phase"
+                self.event_manager.publish(
+                    ActionCanceled(
+                        timeline_time=self.state.battle.timeline.current_time,
+                        unit=unit,
+                        canceled_action=None,  # No specific action object, just the intent
+                        return_to_phase="ACTION_TARGETING"
+                    ),
+                    source="InputHandler"
+                )
             self.state.ui.close_dialog()
             return
 
@@ -463,7 +505,7 @@ class InputHandler:
                     current_turn = self.state.battle.current_turn
 
                 self.event_manager.publish(
-                    LogSaveRequested(turn=current_turn),
+                    LogSaveRequested(timeline_time=current_turn),
                     source="InputHandler",
                 )
                 self._emit_log("Log save requested", category="SYSTEM")
@@ -532,13 +574,12 @@ class InputHandler:
                             category="UI",
                         )
                         # Emit action selected event - PhaseManager will transition to ACTION_TARGETING
+                        action_obj = create_action_by_name(action)
                         self.event_manager.publish(
                             ActionSelected(
-                                turn=self.state.battle.current_turn,
-                                unit_name=unit.name,
-                                unit_id=unit.unit_id,
-                                action_name=action,
-                                action_type="Attack",
+                                timeline_time=self.state.battle.timeline.current_time,
+                                unit=unit,
+                                action=action_obj,
                             ),
                             priority=EventPriority.HIGH,
                             source="InputHandler",
@@ -561,13 +602,12 @@ class InputHandler:
                 if self.state.battle.selected_unit_id:
                     unit = self.game_map.get_unit(self.state.battle.selected_unit_id)
                     if unit:
+                        action_obj = create_action_by_name(action)
                         self.event_manager.publish(
                             ActionSelected(
-                                turn=self.state.battle.current_turn,
-                                unit_name=unit.name,
-                                unit_id=unit.unit_id,
-                                action_name=action,
-                                action_type="Generic",
+                                timeline_time=self.state.battle.timeline.current_time,
+                                unit=unit,
+                                action=action_obj,
                             ),
                             priority=EventPriority.HIGH,
                             source="InputHandler",
@@ -629,12 +669,9 @@ class InputHandler:
                         # Emit unit moved event even though position didn't change (for phase transition)
                         self.event_manager.publish(
                             UnitMoved(
-                                turn=self.state.battle.current_turn,
-                                unit_name=unit.name,
-                                unit_id=unit.unit_id,
-                                team=unit.team,
-                                from_position=(old_position.y, old_position.x),
-                                to_position=(cursor_position.y, cursor_position.x),
+                                timeline_time=self.state.battle.timeline.current_time,
+                                unit=unit,
+                                from_position=old_position,
                             ),
                             priority=EventPriority.HIGH,  # High priority for immediate phase transition
                             source="InputHandler",
@@ -651,12 +688,9 @@ class InputHandler:
                         # Emit single unit moved event with unit_id for phase transitions
                         self.event_manager.publish(
                             UnitMoved(
-                                turn=self.state.battle.current_turn,
-                                unit_name=unit.name,
-                                unit_id=unit.unit_id,
-                                team=unit.team,
-                                from_position=(old_position.y, old_position.x),
-                                to_position=(cursor_position.y, cursor_position.x),
+                                timeline_time=self.state.battle.timeline.current_time,
+                                unit=unit,
+                                from_position=old_position,
                             ),
                             priority=EventPriority.HIGH,  # High priority for immediate phase transition
                             source="InputHandler",
@@ -685,53 +719,40 @@ class InputHandler:
 
     def _handle_action_targeting_confirm(self, cursor_position: Vector2) -> bool:
         """Handle confirmation during action targeting phase."""
-        # For attack actions, use the combat manager directly for AOE support
-        if (
-            self.state.battle.pending_action
-            and self.state.battle.pending_action
-            in ["Attack", "Quick Strike", "Power Attack"]
-            and self.combat_manager
-        ):
-            # Use combat manager for attack execution (supports AOE)
-            success = self.combat_manager.execute_attack_at_cursor()
-            if success:
-                self._emit_log(
-                    f"Attack executed at {cursor_position}", category="BATTLE"
-                )
-                return True
-            else:
-                # Check if there's a unit at cursor for more specific error message
-                target_unit = self.game_map.get_unit_at(cursor_position)
-                if not self.state.battle.is_in_attack_range(cursor_position):
-                    self._emit_log(
-                        "Target position not in attack range", level="WARNING"
-                    )
-                elif not target_unit and not self.state.battle.aoe_tiles:
-                    self._emit_log(
-                        "No valid target at cursor position", level="WARNING"
-                    )
-                else:
-                    self._emit_log("Attack failed", level="WARNING")
-                return False
-
-        # For non-attack actions, use timeline manager
+        # All actions now go through timeline manager for unified execution
         result = self.timeline_manager.handle_action_targeting(cursor_position)
+        
         if result == ActionResult.SUCCESS:
             self._emit_log(
-                f"Action executed successfully at {cursor_position}", category="UI"
+                f"Action executed successfully at {cursor_position}", category="BATTLE"
             )
             return True
-
-        self._emit_log(f"Action failed: {result}", level="WARNING")
-        return False
+        elif result == ActionResult.REQUIRES_CONFIRMATION:
+            # Friendly fire detected - UI Manager will handle dialog
+            self._emit_log(
+                "Friendly fire detected - confirmation required", level="WARNING"
+            )
+            return False
+        else:
+            # Provide specific error messages based on context
+            if not self.state.battle.is_in_attack_range(cursor_position):
+                self._emit_log(
+                    "Target position not in range", level="WARNING"
+                )
+            elif not self.state.battle.aoe_tiles:
+                self._emit_log(
+                    "No valid targets in area", level="WARNING"
+                )
+            else:
+                self._emit_log(f"Action failed: {result}", level="WARNING")
+            return False
 
     def _handle_unit_acting_confirm(self) -> bool:
         """Handle confirmation during unit acting phase."""
-        if self.combat_manager:
-            success = self.combat_manager.execute_attack_at_cursor()
-            if success:
-                return True
-        return False
+        # Route through timeline manager for unified execution
+        cursor_position = self.state.cursor.position
+        result = self.timeline_manager.handle_action_targeting(cursor_position)
+        return result == ActionResult.SUCCESS
 
     def _handle_movement_cancel(self) -> None:
         """Handle cancel during movement phase."""
@@ -788,11 +809,23 @@ class InputHandler:
         self.action_menu_cancel()
 
     def _handle_unit_acting_cancel(self) -> None:
-        """Handle cancel during unit acting phase."""
-        if self.combat_manager:
-            self.combat_manager.clear_attack_state()
-        # Delegate to hierarchical cancel system
-        self.action_menu_cancel()
+        """Handle cancel during unit acting phase - go back to ACTION_TARGETING."""
+        # Don't clear attack state - we're going back to targeting to select a different target
+        
+        # Emit ACTION_CANCELED to transition back to ACTION_TARGETING phase
+        unit_id = self.state.battle.current_acting_unit_id
+        if unit_id and self.game_map:
+            unit = self.game_map.get_unit(unit_id)
+            if unit:
+                self.event_manager.publish(
+                    ActionCanceled(
+                        timeline_time=self.state.battle.timeline.current_time,
+                        unit=unit,
+                        canceled_action=None,
+                        return_to_phase="ACTION_TARGETING"
+                    ),
+                    source="InputHandler"
+                )
 
     def _handle_inspect_confirm(self, position: Vector2) -> bool:
         """Handle Enter key in inspect mode - delegate to UI manager for panel display."""

@@ -1,12 +1,13 @@
-"""Event-driven objective system events and context.
+"""Event-driven system events and context.
 
-This module defines all game events that objectives can subscribe to,
-following the event-driven architecture recommended for scalable objectives.
+This module defines all game events that managers can subscribe to,
+following the event-driven architecture with timeline-based timing.
 
 Event Design Principles:
-- Events are immutable dataclasses with minimal payloads  
-- All events include turn timestamp
-- Events represent "what happened" with stable identifiers (names, coordinates, teams)
+- Events are immutable dataclasses with rich object payloads  
+- All events include timeline_time timestamp from timeline system
+- Events use rich objects (Unit, Vector2) instead of primitive fields
+- Events use proper enums instead of magic strings
 - Keep event types focused and avoid over-granular events
 """
 
@@ -15,10 +16,16 @@ from typing import Optional, TYPE_CHECKING
 from abc import ABC
 from enum import Enum, auto
 
-from ..data.game_enums import Team
+from ..data import Team, PanicTrigger
 
 if TYPE_CHECKING:
     from ..game_view import GameView
+    from ..data.data_structures import Vector2
+    from ...game.entities.unit import Unit
+    from ..engine.actions import Action
+    from ..wounds import WoundType
+    from ...game.managers.log_manager import LogLevel
+    from ..engine.game_state import BattlePhase
 
 
 class EventType(Enum):
@@ -35,14 +42,10 @@ class EventType(Enum):
     UNIT_SPAWNED = auto()
     UNIT_MOVED = auto()
     UNIT_DEFEATED = auto()
-    UNIT_ENTERED_REGION = auto()  # Future enhancement for region-based objectives
-    UNIT_EXITED_REGION = auto()   # Future enhancement for region-based objectives
-    UNIT_TOOK_DAMAGE = auto()
     UNIT_ATTACKED = auto()  # Combat attack actions requesting damage via CombatResolver
-    UNIT_DAMAGED = auto()   # Non-combat damage from hazards, status effects, etc.
+    UNIT_DAMAGED = auto()   # All damage from combat, hazards, status effects, etc.
     
     # Movement and Action Events
-    MOVEMENT_COMPLETED = auto()  # Emitted when unit finishes moving
     ACTION_SELECTED = auto()     # Emitted when user selects an action
     ACTION_EXECUTED = auto()     # Emitted when action is completed
     
@@ -51,24 +54,15 @@ class EventType(Enum):
     MOVEMENT_CANCELED = auto()   # Emitted when user cancels movement
     
     # Combat Events
-    COMBAT_INITIATED = auto()
     ATTACK_TARGETING_SETUP = auto()
     ATTACK_RESOLVED = auto()
-    COMBAT_ENDED = auto()
-    DAMAGE_APPLIED = auto()
+    FRIENDLY_FIRE_DETECTED = auto()    # Friendly fire detected during action validation
     
     # Player Input Events
     PLAYER_ACTION_REQUESTED = auto()
-    PLAYER_INPUT_PROCESSED = auto()
-    MENU_NAVIGATION = auto()
     CURSOR_MOVED = auto()
     
     # UI Events
-    OVERLAY_OPENED = auto()
-    OVERLAY_CLOSED = auto()
-    DIALOG_OPENED = auto()
-    DIALOG_CLOSED = auto()
-    BANNER_SHOWN = auto()
     UI_STATE_CHANGED = auto()
     
     # Logging Events
@@ -89,7 +83,6 @@ class EventType(Enum):
     
     # System Events
     MANAGER_INITIALIZED = auto()
-    SYSTEM_ERROR = auto()
     LOG_SAVE_REQUESTED = auto()
     OBJECTIVES_CHECK_REQUESTED = auto()
 
@@ -97,7 +90,7 @@ class EventType(Enum):
 @dataclass(frozen=True)
 class GameEvent(ABC):
     """Base class for all game events."""
-    turn: int
+    timeline_time: int
     event_type: EventType = field(init=False)
 
 
@@ -123,9 +116,7 @@ class TurnEnded(GameEvent):
 @dataclass(frozen=True)
 class UnitSpawned(GameEvent):
     """Event emitted when a unit is added to the game."""
-    unit_name: str
-    team: Team
-    position: tuple[int, int]
+    unit: "Unit"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_SPAWNED)
@@ -134,11 +125,8 @@ class UnitSpawned(GameEvent):
 @dataclass(frozen=True)
 class UnitMoved(GameEvent):
     """Event emitted when a unit moves to a new position."""
-    unit_name: str
-    unit_id: str
-    team: Team
-    from_position: tuple[int, int]
-    to_position: tuple[int, int]
+    unit: "Unit"  # unit.position contains destination after movement
+    from_position: "Vector2"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_MOVED)
@@ -147,59 +135,20 @@ class UnitMoved(GameEvent):
 @dataclass(frozen=True)
 class UnitDefeated(GameEvent):
     """Event emitted when a unit is defeated/removed from the game."""
-    unit_name: str
-    unit_id: str  # Added for timeline cleanup and other system references
-    team: Team
-    position: tuple[int, int]
+    unit: "Unit"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_DEFEATED)
 
 
-@dataclass(frozen=True)
-class UnitEnteredRegion(GameEvent):
-    """Event emitted when a unit enters a named region (future enhancement)."""
-    unit_name: str
-    team: Team
-    region_name: str
-    position: tuple[int, int]
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.UNIT_ENTERED_REGION)
-
-
-@dataclass(frozen=True)
-class UnitExitedRegion(GameEvent):
-    """Event emitted when a unit exits a named region (future enhancement)."""
-    unit_name: str
-    team: Team  
-    region_name: str
-    position: tuple[int, int]
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.UNIT_EXITED_REGION)
-
-
-@dataclass(frozen=True)
-class UnitTookDamage(GameEvent):
-    """Event emitted when a unit takes damage."""
-    unit_name: str
-    team: Team
-    damage_amount: int
-    position: tuple[int, int]
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.UNIT_TOOK_DAMAGE)
 
 
 @dataclass(frozen=True)
 class MoraleChanged(GameEvent):
     """Event emitted when a unit's morale changes significantly."""
-    unit_name: str
-    team: Team
+    unit: "Unit"
     old_morale: int
     new_morale: int
-    position: tuple[int, int]
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.MORALE_CHANGED)
@@ -208,10 +157,8 @@ class MoraleChanged(GameEvent):
 @dataclass(frozen=True)
 class UnitPanicked(GameEvent):
     """Event emitted when a unit enters panic state."""
-    unit_name: str
-    team: Team
-    position: tuple[int, int]
-    trigger_reason: str  # "low_morale", "ally_death", "heavy_damage", etc.
+    unit: "Unit"
+    trigger: PanicTrigger
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_PANICKED)
@@ -220,9 +167,7 @@ class UnitPanicked(GameEvent):
 @dataclass(frozen=True)
 class UnitRouted(GameEvent):
     """Event emitted when a unit flees the battlefield due to extreme panic."""
-    unit_name: str
-    team: Team
-    position: tuple[int, int]
+    unit: "Unit"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_ROUTED)
@@ -231,9 +176,7 @@ class UnitRouted(GameEvent):
 @dataclass(frozen=True)
 class UnitRallied(GameEvent):
     """Event emitted when a unit recovers from panic state."""
-    unit_name: str
-    team: Team
-    position: tuple[int, int]
+    unit: "Unit"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_RALLIED)
@@ -242,13 +185,8 @@ class UnitRallied(GameEvent):
 @dataclass(frozen=True)
 class UnitAttacked(GameEvent):
     """Event emitted when a unit attacks another unit (requesting combat resolution)."""
-    attacker_name: str
-    attacker_id: str
-    attacker_team: Team
-    target_name: str
-    target_id: str
-    target_team: Team
-    attack_type: str  # "QuickStrike", "PowerAttack", etc.
+    attacker: "Unit"
+    target: "Unit"
     base_damage: int
     damage_multiplier: float = 1.0  # For damage modifiers
     
@@ -258,14 +196,11 @@ class UnitAttacked(GameEvent):
 
 @dataclass(frozen=True)
 class UnitDamaged(GameEvent):
-    """Event emitted when a unit takes damage from non-combat sources."""
-    unit_name: str
-    unit_id: str
-    team: Team
-    position: tuple[int, int]
+    """Event emitted when a unit takes damage from all sources."""
+    unit: "Unit"
     damage: int
-    damage_type: str  # "fire", "poison", "bleeding", etc.
-    source: str  # "Hazard", "StatusEffect", etc.
+    damage_type: "WoundType"
+    source: str  # "Combat", "Hazard", "StatusEffect", etc.
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_DAMAGED)
@@ -284,9 +219,7 @@ class TimelineProcessed(GameEvent):
 @dataclass(frozen=True) 
 class UnitTurnStarted(GameEvent):
     """Event emitted when a unit's turn starts."""
-    unit_name: str
-    unit_id: str
-    team: Team
+    unit: "Unit"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_TURN_STARTED)
@@ -295,10 +228,8 @@ class UnitTurnStarted(GameEvent):
 @dataclass(frozen=True)
 class UnitTurnEnded(GameEvent):
     """Event emitted when a unit's turn ends."""
-    unit_name: str
-    unit_id: str
-    team: Team
-    action_taken: Optional[str] = None
+    unit: "Unit"
+    action_taken: Optional["Action"] = None
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.UNIT_TURN_ENDED)
@@ -307,32 +238,21 @@ class UnitTurnEnded(GameEvent):
 @dataclass(frozen=True)
 class BattlePhaseChanged(GameEvent):
     """Event emitted when battle phase changes."""
-    old_phase: str
-    new_phase: str
-    unit_id: Optional[str] = None
+    old_phase: "BattlePhase"
+    new_phase: "BattlePhase"
+    unit: Optional["Unit"] = None
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.BATTLE_PHASE_CHANGED)
 
 
 # Combat Events
-@dataclass(frozen=True)
-class CombatInitiated(GameEvent):
-    """Event emitted when combat begins."""
-    attacker_name: str
-    attacker_id: str
-    attacker_team: Team
-    combat_type: str  # "ranged", "melee", "aoe", etc.
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.COMBAT_INITIATED)
 
 
 @dataclass(frozen=True)
 class AttackTargetingSetup(GameEvent):
     """Event emitted when attack targeting is set up."""
-    attacker_name: str
-    attacker_id: str
+    attacker: "Unit"
     attack_range_size: int
     targetable_enemies: int
     
@@ -343,8 +263,8 @@ class AttackTargetingSetup(GameEvent):
 @dataclass(frozen=True)
 class AttackResolved(GameEvent):
     """Event emitted when an attack is resolved."""
-    attacker_name: str
-    target_names: list[str]
+    attacker: "Unit"
+    targets: list["Unit"]
     total_damage: int
     defeated_count: int
     
@@ -353,68 +273,37 @@ class AttackResolved(GameEvent):
 
 
 @dataclass(frozen=True)
-class CombatEnded(GameEvent):
-    """Event emitted when combat phase ends."""
-    attacker_name: str
-    targets_hit: int
+class FriendlyFireDetected(GameEvent):
+    """Event emitted when friendly fire is detected during action validation."""
+    attacker: "Unit"
+    friendly_units: list["Unit"]
+    target_position: "Vector2"
+    action_name: str
     
     def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.COMBAT_ENDED)
+        object.__setattr__(self, 'event_type', EventType.FRIENDLY_FIRE_DETECTED)
 
 
-@dataclass(frozen=True)
-class DamageApplied(GameEvent):
-    """Event emitted when damage is applied to a unit."""
-    unit_name: str
-    unit_id: str
-    damage: int
-    hp_remaining: int
-    source: str
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.DAMAGE_APPLIED)
 
 
 # Player Input Events
 @dataclass(frozen=True)
 class PlayerActionRequested(GameEvent):
     """Event emitted when player action is needed."""
-    unit_name: str
-    unit_id: str
+    unit: "Unit"
     available_actions: list[str]
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.PLAYER_ACTION_REQUESTED)
 
 
-@dataclass(frozen=True)
-class PlayerInputProcessed(GameEvent):
-    """Event emitted when player input is processed."""
-    input_type: str
-    key_pressed: Optional[str] = None
-    action_executed: Optional[str] = None
-    result: Optional[str] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.PLAYER_INPUT_PROCESSED)
-
-
-@dataclass(frozen=True)
-class MenuNavigation(GameEvent):
-    """Event emitted when menu navigation occurs."""
-    menu_type: str
-    action: str  # "open", "close", "navigate"
-    selection: Optional[str] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.MENU_NAVIGATION)
 
 
 @dataclass(frozen=True)
 class CursorMoved(GameEvent):
     """Event emitted when cursor position changes."""
-    from_position: tuple[int, int]
-    to_position: tuple[int, int]
+    from_position: "Vector2"
+    to_position: "Vector2"
     context: str  # "movement", "targeting", "navigation"
     
     def __post_init__(self):
@@ -422,54 +311,6 @@ class CursorMoved(GameEvent):
 
 
 # UI Events
-@dataclass(frozen=True)
-class OverlayOpened(GameEvent):
-    """Event emitted when an overlay is opened."""
-    overlay_type: str
-    data: Optional[dict] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.OVERLAY_OPENED)
-
-
-@dataclass(frozen=True)
-class OverlayClosed(GameEvent):
-    """Event emitted when an overlay is closed."""
-    overlay_type: str
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.OVERLAY_CLOSED)
-
-
-@dataclass(frozen=True)
-class DialogOpened(GameEvent):
-    """Event emitted when a dialog is opened."""
-    dialog_type: str
-    message: Optional[str] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.DIALOG_OPENED)
-
-
-@dataclass(frozen=True)
-class DialogClosed(GameEvent):
-    """Event emitted when a dialog is closed."""
-    dialog_type: str
-    user_choice: Optional[str] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.DIALOG_CLOSED)
-
-
-@dataclass(frozen=True)
-class BannerShown(GameEvent):
-    """Event emitted when a banner is shown."""
-    message: str
-    banner_type: str  # "info", "warning", "phase", etc.
-    duration: Optional[float] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.BANNER_SHOWN)
 
 
 @dataclass(frozen=True)
@@ -489,7 +330,7 @@ class LogMessage(GameEvent):
     """Event emitted when a log message is created."""
     message: str
     category: str
-    level: str  # "DEBUG", "INFO", "WARNING", "ERROR"
+    level: "LogLevel"
     source: str
     
     def __post_init__(self):
@@ -557,16 +398,6 @@ class ManagerInitialized(GameEvent):
         object.__setattr__(self, 'event_type', EventType.MANAGER_INITIALIZED)
 
 
-@dataclass(frozen=True)
-class SystemError(GameEvent):
-    """Event emitted when a system error occurs."""
-    error_message: str
-    source: str
-    error_type: str
-    context: Optional[dict] = None
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.SYSTEM_ERROR)
 
 
 @dataclass(frozen=True)
@@ -587,25 +418,13 @@ class ObjectivesCheckRequested(GameEvent):
 
 
 # Movement and Action Events
-@dataclass(frozen=True)
-class MovementCompleted(GameEvent):
-    """Event emitted when a unit finishes moving."""
-    unit_name: str
-    unit_id: str
-    from_position: tuple[int, int]
-    to_position: tuple[int, int]
-    
-    def __post_init__(self):
-        object.__setattr__(self, 'event_type', EventType.MOVEMENT_COMPLETED)
 
 
 @dataclass(frozen=True)
 class ActionSelected(GameEvent):
     """Event emitted when user selects an action."""
-    unit_name: str
-    unit_id: str
-    action_name: str
-    action_type: str
+    unit: "Unit"
+    action: "Action"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.ACTION_SELECTED)
@@ -614,10 +433,8 @@ class ActionSelected(GameEvent):
 @dataclass(frozen=True)
 class ActionExecuted(GameEvent):
     """Event emitted when action is completed."""
-    unit_name: str
-    unit_id: str
-    action_name: str
-    action_type: str
+    unit: "Unit"
+    action: "Action"
     success: bool
     
     def __post_init__(self):
@@ -627,9 +444,8 @@ class ActionExecuted(GameEvent):
 @dataclass(frozen=True)
 class ActionCanceled(GameEvent):
     """Event emitted when user cancels current action."""
-    unit_name: str
-    unit_id: str
-    canceled_action: str
+    unit: "Unit"
+    canceled_action: Optional["Action"]  # None if action not yet determined
     return_to_phase: str  # The phase to return to
     
     def __post_init__(self):
@@ -639,9 +455,8 @@ class ActionCanceled(GameEvent):
 @dataclass(frozen=True)
 class MovementCanceled(GameEvent):
     """Event emitted when user cancels movement."""
-    unit_name: str
-    unit_id: str
-    original_position: tuple[int, int]
+    unit: "Unit"
+    original_position: "Vector2"
     
     def __post_init__(self):
         object.__setattr__(self, 'event_type', EventType.MOVEMENT_CANCELED)

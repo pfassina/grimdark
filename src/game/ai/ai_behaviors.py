@@ -86,7 +86,7 @@ class AggressiveAI(AIBehavior):
         if unit.can_attack(closest_enemy.position):
             return AIDecision(
                 action_name="Attack",
-                target=closest_enemy,  # Pass the Unit object, not the position
+                target=closest_enemy.position,  # Pass the position (Vector2) as expected by AttackAction
                 confidence=0.9,
                 reasoning=f"Attacking closest enemy {closest_enemy.name} at distance {closest_distance}"
             )

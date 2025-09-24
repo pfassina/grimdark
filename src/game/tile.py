@@ -1,9 +1,7 @@
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
-from ..core.data.game_enums import TerrainType
-from ..core.data.game_info import TERRAIN_DATA
-from ..core.data.data_structures import Vector2
+from ..core.data import TerrainType, TERRAIN_DATA, Vector2
 
 if TYPE_CHECKING:
     from .entities.unit import Unit

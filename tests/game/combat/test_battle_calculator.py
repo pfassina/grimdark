@@ -7,7 +7,7 @@ and battle forecast generation for the UI system.
 
 from unittest.mock import Mock, patch
 
-from src.game.combat.battle_calculator import BattleCalculator
+from src.game.combat import BattleCalculator
 from src.core.entities.renderable import BattleForecastRenderData
 
 

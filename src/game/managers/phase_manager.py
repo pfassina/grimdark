@@ -14,15 +14,16 @@ if TYPE_CHECKING:
     from ...core.events.event_manager import EventManager
     from ...core.engine.game_state import GameState
 
-from ...core.events.events import (
+from ...core.events import (
     BattlePhaseChanged,
     EventType,
     GameEvent,
     GamePhaseChanged,
     LogMessage,
 )
-from ...core.engine.game_state import BattlePhase, GamePhase
-from ...core.data.data_structures import VectorArray
+from ...core.engine import BattlePhase, GamePhase
+from ...core.data import VectorArray
+from .log_manager import LogLevel
 
 
 @dataclass
@@ -81,12 +82,21 @@ class PhaseManager:
         self, message: str, category: str = "SYSTEM", level: str = "DEBUG"
     ) -> None:
         """Emit a log message event."""
+        # Map string level to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
         self.event_manager.publish(
             LogMessage(
-                turn=self.state.battle.current_turn if self.state.battle else 0,
+                timeline_time=self.state.battle.timeline.current_time if self.state.battle else 0,
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="PhaseManager",
             ),
             source="PhaseManager",
@@ -212,6 +222,12 @@ class PhaseManager:
                 description="Cancel action targeting returns to action selection",
             ),
             BattlePhaseTransitionRule(
+                from_phase=BattlePhase.ACTION_EXECUTION,
+                event_type=EventType.ACTION_CANCELED,
+                to_phase=BattlePhase.ACTION_TARGETING,
+                description="Cancel action execution (friendly fire) returns to action targeting",
+            ),
+            BattlePhaseTransitionRule(
                 from_phase=BattlePhase.UNIT_ACTION_SELECTION,
                 event_type=EventType.MOVEMENT_CANCELED,
                 to_phase=BattlePhase.UNIT_MOVING,
@@ -307,7 +323,7 @@ class PhaseManager:
         # Emit phase change event
         self.event_manager.publish(
             GamePhaseChanged(
-                turn=self.state.battle.current_turn if self.state.battle else 0,
+                timeline_time=self.state.battle.timeline.current_time if self.state.battle else 0,
                 old_phase=old_phase.name,
                 new_phase=new_phase.name,
             ),
@@ -345,12 +361,17 @@ class PhaseManager:
             self._emit_log("Movement range cleared at end of unit turn")
 
         # Emit battle phase change event
+        # Try to extract unit from triggering event, fallback to None
+        unit = None
+        if hasattr(triggering_event, 'unit') and getattr(triggering_event, 'unit', None):
+            unit = getattr(triggering_event, 'unit')
+        
         self.event_manager.publish(
             BattlePhaseChanged(
-                turn=self.state.battle.current_turn,
-                old_phase=old_phase.name,
-                new_phase=new_phase.name,
-                unit_id=unit_id,
+                timeline_time=self.state.battle.timeline.current_time,
+                old_phase=old_phase,
+                new_phase=new_phase,
+                unit=unit,
             ),
             source="PhaseManager",
         )
@@ -370,7 +391,7 @@ class PhaseManager:
 
         self.event_manager.publish(
             GamePhaseChanged(
-                turn=self.state.battle.current_turn if self.state.battle else 0,
+                timeline_time=self.state.battle.timeline.current_time if self.state.battle else 0,
                 old_phase=old_phase.name,
                 new_phase=new_phase.name,
             ),
@@ -404,12 +425,14 @@ class PhaseManager:
 
         self.state.battle.phase = new_phase
 
+        # PhaseManager doesn't have access to game_map, so we pass None for unit
+        # Subscribers can get the unit by unit_id if needed
         self.event_manager.publish(
             BattlePhaseChanged(
-                turn=self.state.battle.current_turn,
-                old_phase=old_phase.name,
-                new_phase=new_phase.name,
-                unit_id=unit_id,
+                timeline_time=self.state.battle.timeline.current_time,
+                old_phase=old_phase,
+                new_phase=new_phase,
+                unit=None,
             ),
             source="PhaseManager",
         )

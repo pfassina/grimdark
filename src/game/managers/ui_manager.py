@@ -8,8 +8,11 @@ help screens, minimap, confirmation dialogs, and ephemeral banners.
 import time
 from typing import TYPE_CHECKING, Optional
 
-from ...core.data.data_structures import Vector2
-from ...core.events.events import BattlePhaseChanged, GameEvent, GamePhaseChanged
+from ...core.data import Vector2
+from ...core.events import BattlePhaseChanged, GameEvent, GamePhaseChanged, EventType
+from ...core.engine import BattlePhase, get_available_actions
+from .log_manager import LogLevel
+from ..entities.components import WoundComponent
 
 if TYPE_CHECKING:
     from ...core.events.event_manager import EventManager
@@ -24,13 +27,13 @@ if TYPE_CHECKING:
     from ..map import GameMap
     from ..scenarios.scenario import Scenario
 
-from ...core.events.events import (
+from ...core.events import (
     LogMessage,
     ManagerInitialized,
     UIStateChanged,
     UnitTurnEnded,
 )
-from ...core.entities.renderable import (
+from ...core.entities import (
     BannerRenderData,
     BattleForecastRenderData,
     DialogRenderData,
@@ -62,7 +65,6 @@ class UIManager:
         self.banner_duration_ms = 2000  # Default banner duration
 
         # Subscribe to phase change events to manage UI automatically
-        from ...core.events.events import EventType
 
         self.event_manager.subscribe(
             EventType.BATTLE_PHASE_CHANGED,
@@ -79,10 +81,15 @@ class UIManager:
             self._handle_unit_turn_ended,
             subscriber_name="UIManager.unit_turn_ended",
         )
+        self.event_manager.subscribe(
+            EventType.FRIENDLY_FIRE_DETECTED,
+            self._handle_friendly_fire_detected,
+            subscriber_name="UIManager.friendly_fire_detected",
+        )
 
         # Emit initialization event
         self.event_manager.publish(
-            ManagerInitialized(turn=0, manager_name="UIManager"), source="UIManager"
+            ManagerInitialized(timeline_time=0, manager_name="UIManager"), source="UIManager"
         )
 
     def _handle_battle_phase_changed(self, event: GameEvent) -> None:
@@ -91,16 +98,15 @@ class UIManager:
 
         # Debug logging
 
-        # Convert string phase back to enum for comparison
-        new_phase_name = event.new_phase
+        # Get the phase enum for comparison
+        new_phase = event.new_phase
 
-        if new_phase_name == "UNIT_ACTION_SELECTION":
+        if new_phase == BattlePhase.UNIT_ACTION_SELECTION:
             # Open action menu when entering action selection phase
-            if event.unit_id:
-                unit = self.game_map.get_unit(event.unit_id)
+            if event.unit:
+                unit = event.unit
                 if unit:
                     # Build action menu for the unit
-                    from ...core.engine.actions import get_available_actions
 
                     actions = get_available_actions(unit)
                     action_names = []
@@ -116,7 +122,7 @@ class UIManager:
                     # Open the action menu
                     self.state.ui.open_action_menu(action_names)
 
-        elif new_phase_name in ["TIMELINE_PROCESSING", "UNIT_MOVING"]:
+        elif new_phase in [BattlePhase.TIMELINE_PROCESSING, BattlePhase.UNIT_MOVING]:
             # Close action menu when leaving action selection phase
             if self.state.ui.is_action_menu_open():
                 self.state.ui.close_action_menu()
@@ -140,14 +146,42 @@ class UIManager:
         
         # Close action menu when unit turn ends
         self.state.ui.close_action_menu()
+    
+    def _handle_friendly_fire_detected(self, event: GameEvent) -> None:
+        """Handle friendly fire detection by showing confirmation dialog."""
+        from ...core.events import FriendlyFireDetected
+        assert isinstance(event, FriendlyFireDetected), f"Expected FriendlyFireDetected, got {type(event)}"
+        
+        # Build friendly fire message from event data
+        friendly_names = [unit.name for unit in event.friendly_units]
+        if len(friendly_names) == 1:
+            message = f"This {event.action_name} will hit {friendly_names[0]}!"
+        else:
+            message = f"This {event.action_name} will hit {len(friendly_names)} friendly units!"
+        
+        # Store the friendly fire message for the dialog
+        self.state.state_data["friendly_fire_message"] = message
+        
+        # Open the friendly fire confirmation dialog
+        self.state.ui.open_dialog("confirm_friendly_fire")
+        
+        # Emit UI state change event
+        self.event_manager.publish(
+            UIStateChanged(
+                timeline_time=event.timeline_time,
+                state_type="dialog_opened",
+                new_value="confirm_friendly_fire",
+            ),
+            source="UIManager",
+        )
 
     def _emit_log(
-        self, message: str, category: str = "UI", level: str = "DEBUG"
+        self, message: str, category: str = "UI", level: "LogLevel" = LogLevel.DEBUG
     ) -> None:
         """Emit a log message event."""
         self.event_manager.publish(
             LogMessage(
-                turn=0,  # TODO: Get actual turn from game state
+                timeline_time=0,  # TODO: Get actual timeline time from game state
                 message=message,
                 category=category,
                 level=level,
@@ -194,7 +228,7 @@ class UIManager:
         # Emit UI state change event
         self.event_manager.publish(
             UIStateChanged(
-                turn=self.state.battle.current_turn if self.state.battle else 0,
+                timeline_time=self.state.battle.timeline.current_time if self.state.battle else 0,
                 state_type="dialog_opened",
                 new_value="game_over",
             ),
@@ -211,7 +245,7 @@ class UIManager:
         # Emit UI state change event
         self.event_manager.publish(
             UIStateChanged(
-                turn=0,  # TODO: Get actual turn
+                timeline_time=0,  # TODO: Get actual timeline time
                 state_type="banner_shown",
                 new_value=text,
             ),
@@ -321,7 +355,6 @@ class UIManager:
         # Available actions for player units (compact)
         if unit.team.value == 0:  # Player team
             lines.append("─── Actions ───".ljust(width))
-            from ...core.engine.actions import get_available_actions
             available_actions = get_available_actions(unit)
             # Show actions in a more compact format
             action_names = [action.name for action in available_actions[:2]]  # First 2 only
@@ -330,7 +363,6 @@ class UIManager:
             lines.append("".ljust(width))
         
         # Wounds (if any)
-        from ..entities.components import WoundComponent
         wound_comp = unit.entity.get_component("Wound")
         if isinstance(wound_comp, WoundComponent) and wound_comp.active_wounds:
             lines.append(f"─── Wounds ({len(wound_comp.active_wounds)}) ───".ljust(width))
@@ -381,14 +413,12 @@ class UIManager:
             if unit.team.value == 0:  # Player team
                 info_lines.append("")
                 info_lines.append("=== Available Actions ===")
-                from ...core.engine.actions import get_available_actions
                 available_actions = get_available_actions(unit)
                 for action in available_actions:
                     info_lines.append(f"  • {action.name} (Weight: {action.weight})")
                 info_lines.append("  • Wait (Weight: 50)")
             
             # Wounds
-            from ..entities.components import WoundComponent
             wound_comp = unit.entity.get_component("Wound")
             if isinstance(wound_comp, WoundComponent) and wound_comp.active_wounds:
                 info_lines.append("")

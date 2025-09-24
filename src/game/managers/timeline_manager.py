@@ -13,9 +13,13 @@ if TYPE_CHECKING:
     from ..map import GameMap
     from ..entities.unit import Unit
 
-from ...core.engine.actions import Action, ActionResult, create_action_by_name
-from ...core.events.events import (
+from ...core.engine import Action, ActionResult, Wait, BattlePhase, TimelineEntry
+from ...core.engine.actions import create_action_by_name
+from ...core.events import (
     ActionExecuted,
+    BattlePhaseChanged,
+    EventType,
+    FriendlyFireDetected,
     LogMessage,
     ManagerInitialized,
     PlayerActionRequested,
@@ -23,13 +27,13 @@ from ...core.events.events import (
     TurnEnded,
     TurnStarted,
     UIStateChanged,
+    UnitDefeated,
     UnitTurnEnded,
     UnitTurnStarted,
 )
-from ...core.data.game_enums import Team
-from ...core.engine.game_state import BattlePhase
+from ...core.data import Team, Vector2
+from .log_manager import LogLevel
 from ...core.hidden_intent import HiddenIntentManager
-from ...core.engine.timeline import TimelineEntry
 
 # AI controller imports removed - now using AI components
 
@@ -68,14 +72,12 @@ class TimelineManager:
 
         # Emit initialization event
         self.event_manager.publish(
-            ManagerInitialized(turn=0, manager_name="TimelineManager"),
+            ManagerInitialized(timeline_time=0, manager_name="TimelineManager"),
             source="TimelineManager",
         )
 
     def _setup_event_subscriptions(self) -> None:
         """Set up event subscriptions for timeline manager."""
-        from ...core.events import EventType
-
         self.event_manager.subscribe(
             event_type=EventType.UNIT_DEFEATED,
             subscriber=self._handle_unit_defeated,
@@ -96,38 +98,33 @@ class TimelineManager:
 
     def _handle_unit_defeated(self, event) -> None:
         """Handle unit defeat by removing from timeline."""
-        from ...core.events import UnitDefeated
-
         if isinstance(event, UnitDefeated):
-            removed_count = self.timeline.remove_entry(event.unit_id)
+            removed_count = self.timeline.remove_entry(event.unit.unit_id)
 
             if removed_count > 0:
                 self._emit_log(
-                    f"Cleaned up {removed_count} timeline entries for defeated unit {event.unit_name}",
+                    f"Cleaned up {removed_count} timeline entries for defeated unit {event.unit.name}",
                     "TIMELINE",
                 )
 
     def _handle_battle_phase_changed(self, event) -> None:
         """Handle battle phase changes - restore movement range and process timeline."""
-        from ...core.events import BattlePhaseChanged
-
         if isinstance(event, BattlePhaseChanged):
             # Timeline processing is handled by Game.py during the update loop
             # when battle phase is TIMELINE_PROCESSING
             
             # When transitioning to UNIT_MOVING or UNIT_ACTION_SELECTION phase (e.g., after canceling),
             # restore the original movement range that was calculated when turn started
-            if (event.new_phase in ["UNIT_MOVING", "UNIT_ACTION_SELECTION"] and 
-                event.unit_id and 
-                self.state.battle.selected_unit_id == event.unit_id and
+            if (event.new_phase in [BattlePhase.UNIT_MOVING, BattlePhase.UNIT_ACTION_SELECTION] and 
+                event.unit and 
+                self.state.battle.selected_unit_id == event.unit.unit_id and
                 self.state.battle.original_movement_range):
                 
                 # Restore the exact movement range that was originally calculated
                 # This prevents exploitation and preserves the exact original range
                 self.state.battle.set_movement_range(self.state.battle.original_movement_range)
                 
-                unit = self.game_map.get_unit(event.unit_id)
-                unit_name = unit.name if unit else event.unit_id
+                unit_name = event.unit.name
                 self._emit_log(
                     f"Restored original movement range for {unit_name}",
                     "TIMELINE",
@@ -135,36 +132,25 @@ class TimelineManager:
 
     def _handle_action_executed(self, event) -> None:
         """Handle action execution by scheduling the unit for their next turn."""
-        from ...core.events import ActionExecuted
-        from ...core.engine.actions import create_action_by_name
-        
         if not isinstance(event, ActionExecuted):
             return
             
-        self._emit_log(f"Received ActionExecuted event: {event.unit_name} -> {event.action_name}", "TIMELINE", "DEBUG")
+        self._emit_log(f"Received ActionExecuted event: {event.unit.name} -> {event.action.name}", "TIMELINE", LogLevel.DEBUG)
             
-        # Get the unit that executed the action - log error if not found
-        unit = self.game_map.get_unit(event.unit_id)
-        if not unit:
-            self._emit_log(f"ActionExecuted event references non-existent unit: {event.unit_id}", "TIMELINE", "ERROR")
-            return
-            
-        # Get the action - log error if not found  
-        action = create_action_by_name(event.action_name)
-        if not action:
-            self._emit_log(f"ActionExecuted event references unknown action: {event.action_name}", "TIMELINE", "ERROR")
-            return
+        # Get the unit and action directly from the event (rich objects)
+        unit = event.unit
+        action = event.action
             
         # Schedule the unit for their next turn using proper action weight
         effective_weight = action.get_effective_weight(unit)
         self.timeline.schedule_unit(
             unit=unit,
             action_weight=effective_weight,
-            action_description=f"Recovering from {event.action_name}",
+            action_description=f"Recovering from {event.action.name}",
         )
         
         self.actions_executed += 1
-        self._emit_log(f"{unit.name}: {event.action_name} (+{effective_weight} weight)")
+        self._emit_log(f"{unit.name}: {event.action.name} (+{effective_weight} weight)")
 
     def initialize_battle_timeline(self) -> None:
         """Initialize the timeline with all units at battle start.
@@ -209,18 +195,18 @@ class TimelineManager:
         # Emit timeline processed event
         self.event_manager.publish(
             TimelineProcessed(
-                turn=self.timeline.current_time, entries_processed=units_added
+                timeline_time=self.timeline.current_time, entries_processed=units_added
             ),
             source="TimelineManager",
         )
 
     def _emit_log(
-        self, message: str, category: str = "TIMELINE", level: str = "INFO"
+        self, message: str, category: str = "TIMELINE", level: LogLevel = LogLevel.INFO
     ) -> None:
         """Emit a log message event."""
         self.event_manager.publish(
             LogMessage(
-                turn=self.timeline.current_time,
+                timeline_time=self.timeline.current_time,
                 message=message,
                 category=category,
                 level=level,
@@ -233,7 +219,7 @@ class TimelineManager:
         """Emit a UI message event."""
         self.event_manager.publish(
             UIStateChanged(
-                turn=self.timeline.current_time,
+                timeline_time=self.timeline.current_time,
                 state_type="user_message",
                 new_value=message,
             ),
@@ -247,13 +233,13 @@ class TimelineManager:
             True if an entry was processed, False if timeline is empty
         """
         if self.timeline.is_empty:
-            self._emit_log("Timeline is empty, no entries to process", level="WARNING")
+            self._emit_log("Timeline is empty, no entries to process", level=LogLevel.WARNING)
             return False
 
         # Get next timeline entry
         next_entry = self.timeline.peek_next()
         if not next_entry:
-            self._emit_log("No next entry found in timeline", level="WARNING")
+            self._emit_log("No next entry found in timeline", level=LogLevel.WARNING)
             return False
 
         if next_entry.entity_type == "unit":
@@ -287,7 +273,7 @@ class TimelineManager:
                 self._begin_unit_turn(unit)
         else:
             self._emit_log(
-                f"Unknown entity type: {next_entry.entity_type}", level="WARNING"
+                f"Unknown entity type: {next_entry.entity_type}", level=LogLevel.WARNING
             )
 
         return True
@@ -297,15 +283,13 @@ class TimelineManager:
 
         # Emit turn started events
         self.event_manager.publish(
-            TurnStarted(turn=self.timeline.current_time, team=unit.team),
+            TurnStarted(timeline_time=self.timeline.current_time, team=unit.team),
             source="TimelineManager",
         )
         self.event_manager.publish(
             UnitTurnStarted(
-                turn=self.timeline.current_time,
-                unit_name=unit.name,
-                unit_id=unit.unit_id,
-                team=unit.team,
+                timeline_time=self.timeline.current_time,
+                unit=unit,
             ),
             source="TimelineManager",
         )
@@ -336,10 +320,8 @@ class TimelineManager:
         # Emit unit turn started - PhaseManager will transition to UNIT_MOVING
         self.event_manager.publish(
             UnitTurnStarted(
-                turn=self.timeline.current_time,
-                unit_name=unit.name,
-                unit_id=unit.unit_id,
-                team=unit.team,
+                timeline_time=self.timeline.current_time,
+                unit=unit,
             ),
             source="TimelineManager",
         )
@@ -353,9 +335,8 @@ class TimelineManager:
         # Emit player action request
         self.event_manager.publish(
             PlayerActionRequested(
-                turn=self.timeline.current_time,
-                unit_name=unit.name,
-                unit_id=unit.unit_id,
+                timeline_time=self.timeline.current_time,
+                unit=unit,
                 available_actions=["Move", "Attack", "Wait"],
             ),
             source="TimelineManager",
@@ -384,7 +365,7 @@ class TimelineManager:
 
         except Exception as e:
             self._emit_log(
-                f"AI component decision failed for {unit.name}: {e}", "AI", "ERROR"
+                f"AI component decision failed for {unit.name}: {e}", "AI", LogLevel.ERROR
             )
             # Fall back to wait action
             self._execute_fallback_ai_action(unit)
@@ -399,7 +380,7 @@ class TimelineManager:
             self._emit_log(
                 f"Action: {decision.action_name}, Target: {decision.target} Failed",
                 "AI",
-                "ERROR",
+                LogLevel.ERROR,
             )
             # Fall back to a simple action if the AI decision fails
             self._execute_fallback_ai_action(unit)
@@ -407,7 +388,7 @@ class TimelineManager:
 
         # Emit timeline processed event - PhaseManager will transition to TIMELINE_PROCESSING
         self.event_manager.publish(
-            TimelineProcessed(turn=self.timeline.current_time, entries_processed=1),
+            TimelineProcessed(timeline_time=self.timeline.current_time, entries_processed=1),
             source="TimelineManager",
         )
 
@@ -434,7 +415,7 @@ class TimelineManager:
             result = self._execute_wait_action(unit)
             if result != ActionResult.SUCCESS:
                 self._emit_log(
-                    f"Fallback Wait action also failed for {unit.name}", "AI", "ERROR"
+                    f"Fallback Wait action also failed for {unit.name}", "AI", LogLevel.ERROR
                 )
                 # Last resort - just reschedule with basic parameters
                 self.timeline.schedule_unit(
@@ -444,25 +425,25 @@ class TimelineManager:
                 )
             # Emit timeline processed event - PhaseManager will transition to TIMELINE_PROCESSING
             self.event_manager.publish(
-                TimelineProcessed(turn=self.timeline.current_time, entries_processed=1),
+                TimelineProcessed(timeline_time=self.timeline.current_time, entries_processed=1),
                 source="TimelineManager",
             )
 
         # Emit turn ended event
         if unit:
             self.event_manager.publish(
-                TurnEnded(turn=self.timeline.current_time, team=unit.team),
+                TurnEnded(timeline_time=self.timeline.current_time, team=unit.team),
                 source="TimelineManager",
             )
 
         # Emit timeline processed event - PhaseManager will transition to TIMELINE_PROCESSING
         self.event_manager.publish(
-            TimelineProcessed(turn=self.timeline.current_time, entries_processed=1),
+            TimelineProcessed(timeline_time=self.timeline.current_time, entries_processed=1),
             source="TimelineManager",
         )
 
     def execute_unit_action(
-        self, action_name: str, target: Optional[object] = None
+        self, action_name: str, target: Optional[object] = None, bypass_friendly_fire: bool = False
     ) -> ActionResult:
         """Execute an action for the current acting unit.
 
@@ -509,22 +490,22 @@ class TimelineManager:
             self._emit_log(
                 f"✗ Timeline entry mismatch for {unit.name} action {action_name}",
                 "TIMELINE",
-                "WARNING",
+                LogLevel.WARNING,
             )
             if current_entry and current_entry.entity_type == "unit":
                 entry_unit = self._get_unit_from_entry(current_entry)
                 self._emit_log(
                     f"Expected {unit.name}, found {entry_unit.name}",
                     "TIMELINE",
-                    "WARNING",
+                    LogLevel.WARNING,
                 )
             else:
-                self._emit_log("No current entry or unit found", "TIMELINE", "WARNING")
+                self._emit_log("No current entry or unit found", "TIMELINE", LogLevel.WARNING)
 
         # Create the action
         action = create_action_by_name(action_name)
         if not action:
-            self._emit_log(f"Unknown action: {action_name}", "TIMELINE", "ERROR")
+            self._emit_log(f"Unknown action: {action_name}", "TIMELINE", LogLevel.ERROR)
             return ActionResult.FAILED
 
         # Store the pending action
@@ -537,12 +518,40 @@ class TimelineManager:
         # Validate the action
         validation = action.validate(unit, self.game_map, target)
         if not validation.is_valid:
-            self._emit_log(
-                f"Action invalid: {validation.reason}", "TIMELINE", "WARNING"
-            )
-            # CRITICAL: Clear the pending action since validation failed
-            self.state.battle.clear_pending_action()
-            return ActionResult.FAILED
+            # Check if this is friendly fire requiring confirmation
+            if validation.reason == "friendly_fire" and validation.friendly_units:
+                # If bypass_friendly_fire is set, proceed with the action despite friendly fire
+                if bypass_friendly_fire:
+                    self._emit_log(f"Executing action with friendly fire (user confirmed)", "TIMELINE", LogLevel.WARNING)
+                    # Don't return here - continue to execute the action below
+                else:
+                    # DEBUG: Log friendly fire detection
+                    friendly_names = [u.name for u in validation.friendly_units]
+                    self._emit_log(f"FRIENDLY FIRE DETECTED: {unit.name} -> {friendly_names}", "TIMELINE", LogLevel.WARNING)
+                    
+                    # Emit friendly fire detected event for UI Manager to handle
+                    # Ensure target is Vector2 for friendly fire events
+                    if isinstance(target, Vector2):
+                        self.event_manager.publish(
+                            FriendlyFireDetected(
+                                timeline_time=self.timeline.current_time,
+                                attacker=unit,
+                                friendly_units=validation.friendly_units,
+                                target_position=target,
+                                action_name=action_name
+                            ),
+                            source="TimelineManager"
+                        )
+                        # Keep pending action for potential confirmation
+                        return ActionResult.REQUIRES_CONFIRMATION
+            elif not bypass_friendly_fire:
+                # Only fail if it's not friendly fire or we're not bypassing
+                self._emit_log(
+                    f"Action invalid: {validation.reason}", "TIMELINE", LogLevel.WARNING
+                )
+                # CRITICAL: Clear the pending action since validation failed
+                self.state.battle.clear_pending_action()
+                return ActionResult.FAILED
 
         # Execute the action
         def emit_event(event):
@@ -553,19 +562,22 @@ class TimelineManager:
         if result == ActionResult.SUCCESS:
             # Emit turn ended events
             self.event_manager.publish(
-                TurnEnded(turn=self.timeline.current_time, team=unit.team),
+                TurnEnded(timeline_time=self.timeline.current_time, team=unit.team),
                 source="TimelineManager",
             )
             self.event_manager.publish(
                 UnitTurnEnded(
-                    turn=self.timeline.current_time,
-                    unit_name=unit.name,
-                    unit_id=unit.unit_id,
-                    team=unit.team,
-                    action_taken=action_name,
+                    timeline_time=self.timeline.current_time,
+                    unit=unit,
+                    action_taken=action,
                 ),
                 source="TimelineManager",
             )
+
+        # CRITICAL: Process all published events (UnitAttacked, TurnEnded, etc.)
+        # Events are queued but not automatically processed - this ensures
+        # CombatResolver and other systems receive their events
+        self.event_manager.process_events()
 
         # Clear the pending action and return to timeline processing
         self.state.battle.clear_pending_action()
@@ -577,11 +589,9 @@ class TimelineManager:
         # Emit action executed event - PhaseManager will transition to TIMELINE_PROCESSING
         self.event_manager.publish(
             ActionExecuted(
-                turn=self.timeline.current_time,
-                unit_name=unit.name if unit else "Unknown",
-                unit_id=unit.unit_id if unit else "unknown",
-                action_name=action_name,
-                action_type=action.name if action else "Unknown",
+                timeline_time=self.timeline.current_time,
+                unit=unit,
+                action=action,
                 success=(result == ActionResult.SUCCESS),
             ),
             source="TimelineManager",
@@ -665,7 +675,7 @@ class TimelineManager:
             )
         else:
             self._emit_log(
-                "Scheduled action called with None unit", "TIMELINE", "WARNING"
+                "Scheduled action called with None unit", "TIMELINE", LogLevel.WARNING
             )
 
     def skip_unit_turn(self) -> None:
@@ -683,16 +693,15 @@ class TimelineManager:
 
             # Emit turn ended events
             self.event_manager.publish(
-                TurnEnded(turn=self.timeline.current_time, team=unit.team),
+                TurnEnded(timeline_time=self.timeline.current_time, team=unit.team),
                 source="TimelineManager",
             )
+            wait_action = Wait()
             self.event_manager.publish(
                 UnitTurnEnded(
-                    turn=self.timeline.current_time,
-                    unit_name=unit.name,
-                    unit_id=unit.unit_id,
-                    team=unit.team,
-                    action_taken="Pass",
+                    timeline_time=self.timeline.current_time,
+                    unit=unit,
+                    action_taken=wait_action,
                 ),
                 source="TimelineManager",
             )
@@ -831,11 +840,11 @@ class TimelineManager:
 
         if inconsistencies:
             self._emit_log(
-                "=== SYNCHRONIZATION ISSUES DETECTED ===", "TIMELINE", "WARNING"
+                "=== SYNCHRONIZATION ISSUES DETECTED ===", "TIMELINE", LogLevel.WARNING
             )
             for issue in inconsistencies:
-                self._emit_log(f"  - {issue}", "TIMELINE", "WARNING")
-            self._emit_log("Attempting recovery...", "TIMELINE", "WARNING")
+                self._emit_log(f"  - {issue}", "TIMELINE", LogLevel.WARNING)
+            self._emit_log("Attempting recovery...", "TIMELINE", LogLevel.WARNING)
 
             # Attempt recovery by forcing synchronization
             self.state.cursor.set_position(expected_unit.position)
@@ -845,7 +854,7 @@ class TimelineManager:
             self._emit_log(
                 "Recovery completed - cursor and selection forced to sync with timeline",
                 "TIMELINE",
-                "WARNING",
+                LogLevel.WARNING,
             )
 
     def update(self) -> None:
@@ -865,7 +874,7 @@ class TimelineManager:
                     self._emit_log(
                         "Timeline empty but battle not over - attempting recovery",
                         "TIMELINE",
-                        "ERROR",
+                        LogLevel.ERROR,
                     )
                     # Try to recover timeline consistency
                     self._ensure_timeline_consistency()
@@ -889,10 +898,10 @@ class TimelineManager:
         self._emit_log(
             f"Timeline consistency issue: {len(alive_units)} alive units but empty timeline",
             "TIMELINE",
-            "WARNING",
+            LogLevel.WARNING,
         )
         self._emit_log(
-            "Attempting recovery by re-adding missing units", "TIMELINE", "WARNING"
+            "Attempting recovery by re-adding missing units", "TIMELINE", LogLevel.WARNING
         )
 
         # Recovery: Add all alive units back to timeline
@@ -908,7 +917,7 @@ class TimelineManager:
         self._emit_log(
             f"Timeline recovery complete: {recovery_count} units restored",
             "TIMELINE",
-            "WARNING",
+            LogLevel.WARNING,
         )
 
     def _execute_wait_action(self, unit: "Unit") -> ActionResult:
@@ -917,13 +926,12 @@ class TimelineManager:
         self._ensure_timeline_consistency()
 
         # Emit unit turn ended event - PhaseManager needs this for battle phase transitions
+        wait_action = Wait()
         self.event_manager.publish(
             UnitTurnEnded(
-                turn=self.timeline.current_time,
-                unit_name=unit.name,
-                unit_id=unit.unit_id,
-                team=unit.team,
-                action_taken="Wait",
+                timeline_time=self.timeline.current_time,
+                unit=unit,
+                action_taken=wait_action,
             ),
             source="TimelineManager",
         )
@@ -931,11 +939,9 @@ class TimelineManager:
         # Emit action executed event - this will trigger scheduling via event handler
         self.event_manager.publish(
             ActionExecuted(
-                turn=self.timeline.current_time,
-                unit_name=unit.name,
-                unit_id=unit.unit_id,
-                action_name="Wait",
-                action_type="Wait",
+                timeline_time=self.timeline.current_time,
+                unit=unit,
+                action=wait_action,  # Use the wait_action we created above
                 success=True,
             ),
             source="TimelineManager",

@@ -8,18 +8,15 @@ from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
-from ...core.data.data_structures import Vector2
+from ...core.data import Vector2
 from ...core.wounds import create_wound_from_damage, Wound
-from ...core.events.events import EventType, UnitAttacked
+from ...core.events import EventType, UnitAttacked, LogMessage, UnitDefeated
 
 if TYPE_CHECKING:
     from ..map import GameMap
     from ..entities.unit import Unit
     from ..managers.morale_manager import MoraleManager
     from ...core.events.event_manager import EventManager
-
-from ...core.events.events import UnitDefeated, LogMessage
-from ...core.data.game_enums import Team
 
 
 class CombatResult:
@@ -57,48 +54,53 @@ class CombatResolver:
     
     def _handle_unit_attacked(self, event) -> None:
         """Handle UnitAttacked events by processing damage and checking for defeats."""
-        self._emit_log(f"CombatResolver received UnitAttacked event: {event.attacker_name} -> {event.target_name}", "COMBAT", "INFO")
-        
         if not isinstance(event, UnitAttacked):
             return
             
-        # Get the attacker and target units
-        attacker = self.game_map.get_unit(event.attacker_id)
-        target = self.game_map.get_unit(event.target_id)
+        # Get the attacker and target units directly from event
+        attacker = event.attacker
+        target = event.target
         
-        self._emit_log(f"Looking up units: attacker={attacker is not None}, target={target is not None}", "COMBAT", "INFO")
+        self._emit_log(f"CombatResolver received UnitAttacked event: {attacker.name} -> {target.name}", "COMBAT")
 
-        if not attacker or not target:
-            self._emit_log("UnitAttacked event references missing units", "COMBAT", "WARNING")
-            return
-
-        self._emit_log(f"Base damage: {event.base_damage}, multiplier: {event.damage_multiplier}", "COMBAT", "INFO")
+        self._emit_log(f"Base damage: {event.base_damage}, multiplier: {event.damage_multiplier}", "COMBAT")
 
         # Create a CombatResult and process the attack using proper combat mechanics
         result = CombatResult()
         result.targets_hit = [target]
         
-        self._emit_log(f"About to apply damage to {target.name} using combat mechanics", "COMBAT", "INFO")
+        self._emit_log(f"About to apply damage to {target.name} using combat mechanics", "COMBAT")
 
         # Apply damage using vectorized processing (this will calculate proper damage)
         self._apply_damage_to_targets(attacker, result)
         
-        self._emit_log("Damage applied successfully", "COMBAT", "INFO")
+        self._emit_log("Damage applied successfully", "COMBAT")
 
         # Log the attack
         final_damage = int(event.base_damage * event.damage_multiplier)
         self._emit_log(
-            f"{event.attacker_name} → {event.target_name} ({final_damage} damage, {event.attack_type})"
+            f"{attacker.name} → {target.name} ({final_damage} damage)"
         )
 
     def _emit_log(self, message: str, category: str = "BATTLE", level: str = "INFO") -> None:
         """Emit a log message event."""
+        from ..managers.log_manager import LogLevel
+        
+        # Map string to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
         self.event_manager.publish(
             LogMessage(
-                turn=0,  # TODO: Get actual turn from game state
+                timeline_time=0,  # TODO: Get actual timeline time from game state
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="CombatResolver"
             ),
             source="CombatResolver"
@@ -263,14 +265,11 @@ class CombatResolver:
                 
                 self._emit_log(f"{target.name}: Defeated")
                 
-                # Emit unit defeated event
-                self.event_manager.publish(
+                # Emit unit defeated event immediately - critical for timeline consistency
+                self.event_manager.publish_immediate(
                     UnitDefeated(
-                        turn=0,  # TODO: Get actual turn
-                        unit_name=target.name,
-                        unit_id=target.unit_id,
-                        team=target.team,
-                        position=(target.position.x, target.position.y)
+                        timeline_time=0,  # TODO: Get actual timeline time
+                        unit=target
                     ),
                     source="CombatResolver"
                 )
@@ -282,19 +281,3 @@ class CombatResolver:
         if len(result.targets_hit) > 1:
             self._emit_log(f"{attacker.name}: {attacker.combat.aoe_pattern} → {len(result.targets_hit)} targets")
     
-    def create_defeat_event(
-        self, 
-        unit_name: str, 
-        unit_id: str,
-        team: Team, 
-        position: tuple[int, int], 
-        turn: int
-    ) -> UnitDefeated:
-        """Create a unit defeated event for the objective system."""
-        return UnitDefeated(
-            turn=turn,
-            unit_name=unit_name,
-            unit_id=unit_id,
-            team=team,
-            position=position,
-        )

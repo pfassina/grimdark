@@ -8,14 +8,13 @@ and timeline integration for the timeline-based combat system.
 import pytest
 from unittest.mock import Mock
 
-from src.core.engine.actions import (
+from src.core.engine import (
     Action, ActionCategory, ActionResult, ActionValidation,
     QuickStrike, QuickMove, StandardAttack, StandardMove, Wait,
     PowerAttack, ChargeAttack, OverwatchAction, ShieldWall,
     get_available_actions, create_action_by_name
 )
-from src.core.data.data_structures import Vector2
-from src.core.data.game_enums import Team
+from src.core.data import Vector2, Team, AOEPattern, VectorArray
 
 
 class MockUnit:
@@ -34,6 +33,7 @@ class MockUnit:
         # Mock components
         self.combat = Mock()
         self.combat.strength = strength
+        self.combat.aoe_pattern = AOEPattern.SINGLE  # Required for new AttackAction
         
         self.movement = Mock()
         self.movement.movement_points = 3
@@ -47,6 +47,7 @@ class MockGameMap:
     
     def __init__(self):
         self.units = {}
+        self._mock_units_in_positions = []  # Units to return for AOE attacks
         
     def is_valid_position(self, position):
         """Check if position is valid."""
@@ -59,6 +60,23 @@ class MockGameMap:
     def move_unit(self, unit_id, position):
         """Move unit to position."""
         return True  # Default: movement succeeds
+        
+    def calculate_aoe_tiles(self, center, pattern):
+        """Calculate AOE tiles for attacks."""
+        # Simple mock: return center position for SINGLE, center + adjacent for others
+        if pattern == AOEPattern.SINGLE:
+            return VectorArray([center])
+        else:
+            # Return center + one adjacent tile for testing
+            return VectorArray([center, Vector2(center.x + 1, center.y)])
+            
+    def get_units_in_positions(self, positions):
+        """Get units in the given positions."""
+        return self._mock_units_in_positions
+        
+    def set_mock_units_in_aoe(self, units):
+        """Set which units should be returned by get_units_in_positions."""
+        self._mock_units_in_positions = units
 
 
 class TestActionEnums:
@@ -173,7 +191,7 @@ class TestQuickStrike:
         
     @pytest.fixture
     def target(self):
-        return MockUnit(unit_id="target", position=Vector2(5, 6))  # Adjacent
+        return Vector2(5, 6)  # Adjacent position for attack
         
     @pytest.fixture
     def game_map(self):
@@ -189,6 +207,10 @@ class TestQuickStrike:
         
     def test_validate_success(self, action, actor, target, game_map):
         """Test successful validation."""
+        # Set up an enemy target unit at the target position
+        target_unit = MockUnit(unit_id="target", position=target, team=Team.ENEMY)
+        game_map.set_mock_units_in_aoe([target_unit])
+        
         validation = action.validate(actor, game_map, target)
         assert validation.is_valid
         
@@ -200,27 +222,32 @@ class TestQuickStrike:
         
     def test_validate_invalid_target(self, action, actor, game_map):
         """Test validation with invalid target."""
-        invalid_target = "not a unit"
+        invalid_target = "not a position"
         validation = action.validate(actor, game_map, invalid_target)
         assert not validation.is_valid
-        assert "Invalid target" in validation.reason
+        assert "Target must be" in validation.reason
         
-    def test_validate_dead_target(self, action, actor, game_map):
-        """Test validation with dead target."""
-        dead_target = MockUnit(is_alive=False)
-        validation = action.validate(actor, game_map, dead_target)
+    def test_validate_no_targets_in_area(self, action, actor, game_map):
+        """Test validation with no valid targets in AOE area."""
+        target_position = Vector2(5, 6)  # Adjacent position
+        game_map.set_mock_units_in_aoe([])  # No units in AOE
+        validation = action.validate(actor, game_map, target_position)
         assert not validation.is_valid
-        assert "Target is dead" in validation.reason
+        assert "No valid targets in area" in validation.reason
         
     def test_validate_out_of_range(self, action, actor, game_map):
         """Test validation with out-of-range target."""
-        far_target = MockUnit(position=Vector2(10, 10))  # Too far
-        validation = action.validate(actor, game_map, far_target)
+        far_position = Vector2(10, 10)  # Too far
+        validation = action.validate(actor, game_map, far_position)
         assert not validation.is_valid
         assert "out of range" in validation.reason
         
     def test_execute_success_with_events(self, action, actor, target, game_map):
         """Test successful execution with event system."""
+        # Set up an enemy target unit for successful execution
+        target_unit = MockUnit(unit_id="target", position=target, team=Team.ENEMY)
+        game_map.set_mock_units_in_aoe([target_unit])
+        
         event_emitter = Mock()
         
         result = action.execute(actor, game_map, target, event_emitter)
@@ -231,14 +258,17 @@ class TestQuickStrike:
         # Verify event details
         call_args = event_emitter.call_args[0]
         attack_event = call_args[0]
-        assert attack_event.attacker_id == actor.unit_id
-        assert attack_event.target_id == target.unit_id
-        assert attack_event.attack_type == "QuickStrike"
+        assert attack_event.attacker == actor
+        assert attack_event.target == target_unit  # Event target is the unit, not position
         assert attack_event.damage_multiplier == 0.7
         
     def test_execute_requires_event_system(self, action, actor, target, game_map):
         """Test that execution requires event system."""
-        with pytest.raises(RuntimeError, match="QuickStrike requires event system"):
+        # Set up an enemy target unit so validation passes
+        target_unit = MockUnit(unit_id="target", position=target, team=Team.ENEMY)
+        game_map.set_mock_units_in_aoe([target_unit])
+        
+        with pytest.raises(RuntimeError, match="Quick Strike requires event system"):
             action.execute(actor, game_map, target, None)
             
     def test_execute_failed_validation(self, action, actor, game_map):
@@ -344,7 +374,7 @@ class TestStandardAttack:
         
     @pytest.fixture
     def target(self):
-        return MockUnit(unit_id="target", position=Vector2(5, 6))
+        return Vector2(5, 6)
         
     @pytest.fixture
     def game_map(self):
@@ -360,6 +390,10 @@ class TestStandardAttack:
         
     def test_execute_success_with_events(self, action, actor, target, game_map):
         """Test successful execution with event system."""
+        # Set up an enemy target unit for successful execution
+        target_unit = MockUnit(unit_id="target", position=target, team=Team.ENEMY)
+        game_map.set_mock_units_in_aoe([target_unit])
+        
         event_emitter = Mock()
         
         result = action.execute(actor, game_map, target, event_emitter)
@@ -370,6 +404,8 @@ class TestStandardAttack:
         # Verify event details
         call_args = event_emitter.call_args[0]
         attack_event = call_args[0]
+        assert attack_event.attacker == actor
+        assert attack_event.target == target_unit  # Event target is the unit, not position
         assert attack_event.damage_multiplier == 1.0  # Full damage
 
 
@@ -425,7 +461,7 @@ class TestPowerAttack:
         
     @pytest.fixture
     def target(self):
-        return MockUnit(unit_id="target", position=Vector2(5, 6))
+        return Vector2(5, 6)
         
     @pytest.fixture
     def game_map(self):
@@ -609,9 +645,9 @@ class TestActionFactories:
         assert action.name == "Quick Strike"
         
     def test_create_action_by_name_failure(self):
-        """Test creating action by unknown name."""
-        action = create_action_by_name("Unknown Action")
-        assert action is None
+        """Test creating action by unknown name raises ValueError."""
+        with pytest.raises(ValueError, match="Unknown action name: Unknown Action"):
+            create_action_by_name("Unknown Action")
         
     def test_create_action_by_name_all_actions(self):
         """Test creating all available actions by name."""

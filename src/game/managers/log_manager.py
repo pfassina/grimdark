@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from ...core.events.event_manager import EventManager
     from ...core.engine.game_state import GameState
 
+from ...core.events import EventType, LogMessage as LogEvent, DebugMessage, LogSaveRequested
+
 
 class LogCategory(Enum):
     """Categories for log messages."""
@@ -143,8 +145,6 @@ class LogManager:
     
     def _setup_event_subscriptions(self) -> None:
         """Set up event subscriptions for centralized logging."""
-        from ...core.events import EventType
-        
         # Subscribe to log message events (event manager is required)
         self.event_manager.subscribe(
             EventType.LOG_MESSAGE,
@@ -168,7 +168,6 @@ class LogManager:
     
     def _handle_log_message_event(self, event) -> None:
         """Handle log message events from the event system."""
-        from ...core.events import LogMessage as LogEvent
         if isinstance(event, LogEvent):
             # Map event category string to LogCategory enum
             try:
@@ -183,7 +182,6 @@ class LogManager:
     
     def _handle_debug_message_event(self, event) -> None:
         """Handle debug message events from the event system."""
-        from ...core.events import DebugMessage
         if isinstance(event, DebugMessage):
             # Store as debug category message
             message = LogMessage(text=f"[{event.source}] {event.message}", category=LogCategory.DEBUG)
@@ -192,7 +190,6 @@ class LogManager:
     
     def _handle_log_save_request(self, event) -> None:
         """Handle log save request events from the event system."""
-        from ...core.events import LogSaveRequested
         if isinstance(event, LogSaveRequested):
             # Call the save log functionality
             success = self.save_log_to_file()

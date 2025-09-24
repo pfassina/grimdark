@@ -20,8 +20,8 @@ from .scenario_structures import (
 
 if TYPE_CHECKING:
     from ...core.game_view import GameView
-    from ..managers.objective_manager import ObjectiveManager
     from ...core.events.event_manager import EventManager
+    from ..managers.objective_manager import ObjectiveManager
 
 
 @dataclass
@@ -68,7 +68,7 @@ class Scenario:
             event_manager: Event manager for event publishing and logging
         """
         from ..managers.objective_manager import ObjectiveManager
-
+        
         self.objective_manager = ObjectiveManager(game_view, event_manager)
         self.objective_manager.register_objectives(
             victory_objectives=self.victory_objectives,

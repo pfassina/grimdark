@@ -12,7 +12,8 @@ import os
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from src.core.engine.timeline import TimelineEntry
+# ruff: noqa: E402
+from src.core.engine import TimelineEntry
 
 
 class TestTimelineEntry:

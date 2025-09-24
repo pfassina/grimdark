@@ -5,18 +5,15 @@ while maintaining the exact same API as the original Unit class for backward
 compatibility.
 """
 
-from typing import TYPE_CHECKING, Optional, cast
+from typing import Optional, cast
 
-from ...core.data.game_enums import UnitClass, Team
-from ...core.data.data_structures import Vector2
+from ...core.data import UnitClass, Team, Vector2
 from .unit_templates import create_unit_entity
 from .components import (
     ActorComponent, HealthComponent, MovementComponent, 
-    CombatComponent, StatusComponent, InterruptComponent, AIComponent
+    CombatComponent, StatusComponent, InterruptComponent, AIComponent,
+    MoraleComponent, WoundComponent
 )
-
-if TYPE_CHECKING:
-    from .components import MoraleComponent, WoundComponent
 
 
 class Unit:
@@ -216,15 +213,13 @@ class Unit:
         return cast(InterruptComponent, self.entity.require_component("Interrupt"))
     
     @property
-    def _morale(self) -> "MoraleComponent":
+    def _morale(self) -> MoraleComponent:
         """Get Morale component (internal helper)."""
-        from .components import MoraleComponent
         return cast(MoraleComponent, self.entity.require_component("Morale"))
     
     @property
-    def _wound(self) -> "WoundComponent":
+    def _wound(self) -> WoundComponent:
         """Get Wound component (internal helper)."""
-        from .components import WoundComponent
         return cast(WoundComponent, self.entity.require_component("Wound"))
     
     @property

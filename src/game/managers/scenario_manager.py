@@ -14,13 +14,14 @@ if TYPE_CHECKING:
     from ..scenarios.scenario import Scenario
     from ..scenarios.scenario_menu import ScenarioMenu
 
-from ...core.events.events import (
+from ...core.events import (
     LogMessage,
     ManagerInitialized,
     ScenarioLoaded,
 )
 from ...core.game_view import GameView
 from ..scenarios.scenario_loader import ScenarioLoader
+from .log_manager import LogLevel
 
 
 TManager = TypeVar("TManager")
@@ -53,7 +54,7 @@ class ScenarioManager:
 
         # Emit initialization event
         self.event_manager.publish(
-            ManagerInitialized(turn=0, manager_name="ScenarioManager"),
+            ManagerInitialized(timeline_time=0, manager_name="ScenarioManager"),
             source="ScenarioManager",
         )
 
@@ -61,12 +62,21 @@ class ScenarioManager:
         self, message: str, category: str = "SCENARIO", level: str = "INFO"
     ) -> None:
         """Emit a log message event."""
+        # Map string to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
         self.event_manager.publish(
             LogMessage(
-                turn=self.state.battle.current_turn,
+                timeline_time=self.state.battle.timeline.current_time,
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="ScenarioManager",
             ),
             source="ScenarioManager",
@@ -104,7 +114,7 @@ class ScenarioManager:
         # Emit scenario loaded event
         self.event_manager.publish(
             ScenarioLoaded(
-                turn=0,
+                timeline_time=0,
                 scenario_name=scenario.name,
                 scenario_path=getattr(scenario, "filepath", "unknown"),
             ),

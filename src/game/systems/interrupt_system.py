@@ -22,8 +22,8 @@ if TYPE_CHECKING:
     from ..map import GameMap
     from ..entities.unit import Unit
 
-from ...core.engine.actions import ActionResult
-from ...core.data.game_enums import Team
+from ...core.engine import ActionResult
+from ...core.data import Team
 
 
 class TriggerType(Enum):

@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any, Optional
 
-from ..data.data_structures import Vector2, VectorArray
+from ..data import Vector2, VectorArray
 from .timeline import Timeline
 
 
@@ -249,6 +249,7 @@ class BattleState:
 
     selected_target: Optional[Vector2] = None
     aoe_tiles: VectorArray = field(default_factory=VectorArray)
+    friendly_fire_preview: VectorArray = field(default_factory=VectorArray)  # UI highlighting for friendly fire
 
     selectable_units: list[str] = field(default_factory=list)
     current_unit_index: int = 0

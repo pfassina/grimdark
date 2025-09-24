@@ -8,11 +8,9 @@ and defeat handling in the timeline-based combat system.
 import pytest
 from unittest.mock import Mock, patch
 
-from src.game.combat.combat_resolver import CombatResolver, CombatResult
-from src.core.events.event_manager import EventManager
-from src.core.events.events import UnitAttacked, UnitDefeated, LogMessage, EventType
-from src.core.data.data_structures import Vector2
-from src.core.data.game_enums import Team
+from src.game.combat import CombatResolver, CombatResult
+from src.core.events import EventManager, UnitAttacked, UnitDefeated, LogMessage, EventType
+from src.core.data import Vector2, Team
 from src.core.wounds import Wound
 
 
@@ -245,9 +243,9 @@ class TestSingleAttack:
         for call in mock_event_manager.publish.call_args_list:
             event = call[0][0]  # First argument is the event
             if isinstance(event, UnitDefeated):
-                assert event.unit_name == weak_target.name
-                assert event.unit_id == weak_target.unit_id
-                assert event.team == weak_target.team
+                assert event.unit.name == weak_target.name
+                assert event.unit.unit_id == weak_target.unit_id
+                assert event.unit.team == weak_target.team
                 defeated_event_published = True
                 break
         
@@ -486,15 +484,12 @@ class TestEventHandling:
     def test_unit_attacked_event_handling(self, resolver, mock_game_map):
         """Test handling of UnitAttacked events."""
         # Create a UnitAttacked event
+        attacker = mock_game_map.units["knight"]
+        target = mock_game_map.units["orc"]
         attack_event = UnitAttacked(
-            turn=1,
-            attacker_name="Knight",
-            attacker_id="knight",
-            attacker_team=Team.PLAYER,
-            target_name="Orc",
-            target_id="orc",
-            target_team=Team.ENEMY,
-            attack_type="StandardAttack",
+            timeline_time=1,
+            attacker=attacker,
+            target=target,
             base_damage=12,
             damage_multiplier=1.0
         )
@@ -511,16 +506,28 @@ class TestEventHandling:
         
     def test_invalid_unit_event_handling(self, resolver):
         """Test handling events with invalid unit references."""
+        # Create mock units with minimal required attributes
+        from unittest.mock import Mock
+        fake_attacker = Mock()
+        fake_attacker.name = "Invalid Attacker"
+        fake_attacker.unit_id = "invalid_id"
+        fake_attacker.combat = Mock()
+        fake_attacker.combat.attack = 10
+        fake_attacker.combat.strength = 15  # Add strength for damage calculation
+        
+        fake_target = Mock()
+        fake_target.name = "Invalid Target"
+        fake_target.unit_id = "also_invalid"
+        fake_target.combat = Mock()
+        fake_target.combat.defense = 5
+        fake_target.hp_current = 20
+        fake_target.hp_max = 20
+        
         # Create event with non-existent units
         invalid_event = UnitAttacked(
-            turn=1,
-            attacker_name="NonExistent",
-            attacker_id="invalid_id",
-            attacker_team=Team.PLAYER,
-            target_name="AlsoNonExistent", 
-            target_id="also_invalid",
-            target_team=Team.ENEMY,
-            attack_type="StandardAttack",
+            timeline_time=1,
+            attacker=fake_attacker,
+            target=fake_target,
             base_damage=10,
             damage_multiplier=1.0
         )
@@ -532,49 +539,14 @@ class TestEventHandling:
         resolver.event_manager.publish.assert_called()
         
     def test_non_attack_event_ignored(self, resolver):
-        """Test that non-UnitAttacked events cause AttributeError (bug in current implementation)."""
-        # Create a different event type
-        log_event = LogMessage(turn=1, message="Test", category="TEST", level="INFO", source="Test")
+        """Test that non-UnitAttacked events are gracefully ignored."""
+        # Create a different event type  
+        from src.game.managers.log_manager import LogLevel
+        log_event = LogMessage(timeline_time=1, message="Test", category="TEST", level=LogLevel.INFO, source="Test")
         
-        # Current implementation has a bug - it tries to access attacker_name before type check
-        with pytest.raises(AttributeError, match="'LogMessage' object has no attribute 'attacker_name'"):
-            resolver._handle_unit_attacked(log_event)
+        # Should handle gracefully without error (fixed implementation)
+        resolver._handle_unit_attacked(log_event)  # Should not raise any exception
 
-
-class TestDefeatEventCreation:
-    """Test creation of defeat events."""
-    
-    @pytest.fixture
-    def mock_game_map(self):
-        return MockGameMap()
-        
-    @pytest.fixture
-    def mock_event_manager(self):
-        event_manager = Mock(spec=EventManager)
-        event_manager.subscribe = Mock()
-        event_manager.publish = Mock()
-        return event_manager
-        
-    @pytest.fixture
-    def resolver(self, mock_game_map, mock_event_manager):
-        return CombatResolver(mock_game_map, mock_event_manager)
-    
-    def test_create_defeat_event(self, resolver):
-        """Test creation of UnitDefeated events."""
-        event = resolver.create_defeat_event(
-            unit_name="Enemy Knight",
-            unit_id="enemy_01",
-            team=Team.ENEMY,
-            position=(5, 7),
-            turn=3
-        )
-        
-        assert isinstance(event, UnitDefeated)
-        assert event.unit_name == "Enemy Knight"
-        assert event.unit_id == "enemy_01"
-        assert event.team == Team.ENEMY
-        assert event.position == (5, 7)
-        assert event.turn == 3
 
 
 class TestCombatEdgeCases:

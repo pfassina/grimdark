@@ -12,10 +12,10 @@ import pytest
 project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, project_root)
 
-from src.core.data.data_structures import Vector2
-from src.core.events.event_manager import EventManager
-from src.core.engine.game_state import GameState, GamePhase
-from src.core.engine.timeline import Timeline
+# ruff: noqa: E402
+from src.core.data import Vector2
+from src.core.events import EventManager
+from src.core.engine import GameState, GamePhase, Timeline
 from src.game.map import GameMap
 
 

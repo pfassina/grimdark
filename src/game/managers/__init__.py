@@ -7,7 +7,7 @@ of game functionality through the event-driven architecture.
 from .combat_manager import CombatManager
 from .escalation_manager import EscalationManager
 from .hazard_manager import HazardManager
-from .log_manager import LogManager
+from .log_manager import LogManager, LogLevel
 from .morale_manager import MoraleManager
 from .objective_manager import ObjectiveManager
 from .phase_manager import PhaseManager
@@ -21,6 +21,7 @@ __all__ = [
     "EscalationManager", 
     "HazardManager",
     "LogManager",
+    "LogLevel",
     "MoraleManager",
     "ObjectiveManager",
     "PhaseManager",

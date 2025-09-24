@@ -8,8 +8,7 @@ from typing import Optional
 import numpy as np
 from numpy.typing import NDArray
 
-from ..core.data.data_structures import Vector2, VectorArray
-from ..core.data.game_enums import Team, TerrainType
+from ..core.data import Vector2, VectorArray, Team, TerrainType, TERRAIN_DATA, AOEPattern
 from ..core.tileset_loader import get_tileset_config
 from .tile import Tile
 from .entities.unit import Unit
@@ -262,9 +261,7 @@ class GameMap:
         # Get terrain blocking
         terrain_types = self.tiles["terrain_type"]
 
-        # Import terrain data
-        from ..core.data.game_info import TERRAIN_DATA
-
+        # Use terrain data
         max_terrain_value = max(terrain.value for terrain in TerrainType)
         blocks_movement = np.zeros(max_terrain_value + 1, dtype=np.bool_)
 
@@ -299,14 +296,10 @@ class GameMap:
 
     def is_terrain_blocking(self, terrain_type: TerrainType) -> bool:
         """Check if terrain type blocks movement using direct lookup."""
-        from ..core.data.game_info import TERRAIN_DATA
-
         return TERRAIN_DATA[terrain_type].blocks_movement
 
     def get_terrain_move_cost(self, terrain_type: TerrainType) -> int:
         """Get movement cost for terrain type using direct lookup."""
-        from ..core.data.game_info import TERRAIN_DATA
-
         return TERRAIN_DATA[terrain_type].move_cost
 
     def is_valid_position(self, position: Vector2) -> bool:
@@ -574,9 +567,7 @@ class GameMap:
         # Get terrain data for fast access
         terrain_types = self.tiles["terrain_type"]
 
-        # Import terrain data for move costs and blocking
-        from ..core.data.game_info import TERRAIN_DATA
-
+        # Use terrain data for move costs and blocking
         # Create movement cost lookup array for all terrain types
         max_terrain_value = max(terrain.value for terrain in TerrainType)
         move_costs = np.ones(
@@ -714,12 +705,12 @@ class GameMap:
         positions = np.column_stack((valid_y, valid_x)).astype(np.int16)
         return VectorArray(positions)
 
-    def calculate_aoe_tiles(self, center: Vector2, pattern: str) -> VectorArray:
+    def calculate_aoe_tiles(self, center: Vector2, pattern: AOEPattern) -> VectorArray:
         """Calculate AOE affected tiles from center position, clipped to map bounds.
 
         Args:
             center: Center position vector of the AOE
-            pattern: AOE pattern type ("single", "cross", etc.)
+            pattern: AOE pattern enum
 
         Returns:
             VectorArray of tiles affected by the AOE pattern
@@ -727,19 +718,19 @@ class GameMap:
         return self._calculate_aoe_tiles_vectorized(center, pattern)
 
     def _calculate_aoe_tiles_vectorized(
-        self, center: Vector2, pattern: str
+        self, center: Vector2, pattern: AOEPattern
     ) -> VectorArray:
         """Vectorized implementation of AOE pattern generation.
 
         Uses numpy arrays for efficient pattern generation and bounds checking.
         """
-        if pattern == "single":
+        if pattern == AOEPattern.SINGLE:
             if self.is_valid_position(center):
                 return VectorArray([center])
             else:
                 return VectorArray()
 
-        elif pattern == "cross":
+        elif pattern == AOEPattern.CROSS:
             # Cross pattern: center plus 4 cardinal directions
             offsets = np.array(
                 [
@@ -752,7 +743,7 @@ class GameMap:
                 dtype=np.int8,
             )  # Small offset values
 
-        elif pattern == "square":
+        elif pattern == AOEPattern.SQUARE:
             # 3x3 square pattern
             offsets = np.array(
                 [
@@ -769,7 +760,7 @@ class GameMap:
                 dtype=np.int8,
             )
 
-        elif pattern == "diamond":
+        elif pattern == AOEPattern.DIAMOND:
             # Diamond pattern (Manhattan distance <= 2)
             offsets = np.array(
                 [
@@ -790,13 +781,13 @@ class GameMap:
                 dtype=np.int8,
             )
 
-        elif pattern == "line_horizontal":
+        elif pattern == AOEPattern.LINE_HORIZONTAL:
             # 5-tile horizontal line
             offsets = np.array(
                 [[0, -2], [0, -1], [0, 0], [0, 1], [0, 2]], dtype=np.int8
             )
 
-        elif pattern == "line_vertical":
+        elif pattern == AOEPattern.LINE_VERTICAL:
             # 5-tile vertical line
             offsets = np.array(
                 [[-2, 0], [-1, 0], [0, 0], [1, 0], [2, 0]], dtype=np.int8

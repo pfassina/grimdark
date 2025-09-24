@@ -20,9 +20,9 @@ from numpy.typing import NDArray
 from .game_enums import Team, UnitClass
 
 if TYPE_CHECKING:
+    from ..entities.renderable import UnitRenderData
     from ...game.entities.unit import Unit
     from ...game.scenarios.scenario_structures import UnitData
-    from ..entities.renderable import UnitRenderData
 
 
 @dataclass
@@ -312,28 +312,21 @@ class DataConverter:
         """
         from ..entities.renderable import UnitRenderData
         
-        # Extract wound information
-        wound_count = 0
-        wound_descriptions = []
-        wound_penalties = {}
-        if hasattr(unit, 'wound') and unit.wound:
-            wound_count = unit.wound.get_wound_count()
-            wound_penalties = unit.wound.get_wound_penalties()
-            
-            # Generate wound descriptions for display
-            for wound in unit.wound.active_wounds:
-                severity_text = wound.properties.severity.name.lower()
-                body_part_text = wound.properties.body_part.name.replace('_', ' ').lower()
-                wound_descriptions.append(f"{severity_text.title()} {body_part_text} {wound.properties.wound_type.name.lower()}")
+        # Extract wound information - wound component always exists
+        wound_count = unit.wound.get_wound_count()
+        wound_penalties = unit.wound.get_wound_penalties()
         
-        # Extract morale information
-        morale_current = 100
-        morale_state = "Steady"
-        morale_modifiers = {}
-        if hasattr(unit, 'morale') and unit.morale:
-            morale_current = unit.morale.get_effective_morale()
-            morale_state = unit.morale.get_morale_state()
-            morale_modifiers = unit.morale.temporary_modifiers.copy()
+        # Generate wound descriptions for display
+        wound_descriptions = []
+        for wound in unit.wound.active_wounds:
+            severity_text = wound.properties.severity.name.lower()
+            body_part_text = wound.properties.body_part.name.replace('_', ' ').lower()
+            wound_descriptions.append(f"{severity_text.title()} {body_part_text} {wound.properties.wound_type.name.lower()}")
+        
+        # Extract morale information - morale component always exists
+        morale_current = unit.morale.get_effective_morale()
+        morale_state = unit.morale.get_morale_state()
+        morale_modifiers = unit.morale.temporary_modifiers.copy()
         
         return UnitRenderData(
             position=unit.position,
@@ -372,6 +365,7 @@ class DataConverter:
             Fully initialized Unit instance
         """
         from ...game.entities.unit import Unit
+        from ...game.ai.ai_behaviors import create_ai_behavior, AIType
         
         # Parse unit class and team from strings
         unit_class = UnitClass[unit_data.unit_class.upper()]
@@ -404,7 +398,6 @@ class DataConverter:
                         unit.status.speed = value
                     elif stat_name == "ai_behavior":
                         # Override AI behavior - value should be string like "AGGRESSIVE" or "INACTIVE"
-                        from ...game.ai.ai_behaviors import create_ai_behavior, AIType
                         try:
                             ai_type = getattr(AIType, value)
                             ai_behavior = create_ai_behavior(ai_type)

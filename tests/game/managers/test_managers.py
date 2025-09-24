@@ -7,15 +7,28 @@ that coordinate the timeline-based game architecture.
 
 import pytest
 from unittest.mock import Mock
-from src.core.events.event_manager import EventManager
-from src.core.events.events import (
-    EventType, UnitTurnStarted, ActionExecuted,
+from src.core.events import (
+    EventManager, EventType, UnitTurnStarted, ActionExecuted,
     ScenarioLoaded, BattlePhaseChanged
 )
-from src.core.data.game_enums import Team
-from src.core.engine.game_state import GameState, GamePhase, BattlePhase
-from src.core.engine.timeline import Timeline
+from src.core.data import Team
+from src.core.engine import GameState, GamePhase, BattlePhase, Timeline
 from src.game.managers.phase_manager import PhaseManager, GamePhaseTransitionRule
+
+
+class MockUnit:
+    """Simple mock unit for testing."""
+    def __init__(self, name: str, unit_id: str, team: Team):
+        self.name = name
+        self.unit_id = unit_id
+        self.team = team
+
+
+class MockAction:
+    """Simple mock action for testing."""
+    def __init__(self, name: str, action_type: str = "Movement"):
+        self.name = name
+        self.action_type = action_type
 
 
 class TestPhaseTransitionRule:
@@ -125,7 +138,7 @@ class TestPhaseManager:
         assert phase_manager.state.phase == GamePhase.MAIN_MENU
         
         # Publish scenario loaded event
-        scenario_event = ScenarioLoaded(turn=0, scenario_name="test", scenario_path="test.yaml")
+        scenario_event = ScenarioLoaded(timeline_time=0, scenario_name="test", scenario_path="test.yaml")
         event_manager.publish_immediate(scenario_event)
         
         # Should transition to battle phase
@@ -233,11 +246,10 @@ class TestManagerEventFlow:
         event_manager.subscribe(EventType.UNIT_TURN_STARTED, event_handler)
         
         # Publish event
+        mock_unit = MockUnit("Test Knight", "test_123", Team.PLAYER)
         turn_event = UnitTurnStarted(
-            turn=1,
-            unit_name="Test Knight",
-            unit_id="test_123",
-            team=Team.PLAYER
+            timeline_time=1,
+            unit=mock_unit  # type: ignore[arg-type]
         )
         event_manager.publish_immediate(turn_event)
         
@@ -261,18 +273,18 @@ class TestManagerEventFlow:
         event_manager.subscribe(EventType.ACTION_EXECUTED, timeline_handler)
         
         # Publish different types of events
+        mock_unit = MockUnit("Test Knight", "test_123", Team.PLAYER)
         phase_event = BattlePhaseChanged(
-            turn=1,
-            old_phase="TIMELINE_PROCESSING",
-            new_phase="UNIT_MOVING",
-            unit_id="test_123"
+            timeline_time=1,
+            old_phase=BattlePhase.TIMELINE_PROCESSING,
+            new_phase=BattlePhase.UNIT_MOVING,
+            unit=mock_unit  # type: ignore[arg-type]
         )
+        mock_action = MockAction("Move", "Movement")
         action_event = ActionExecuted(
-            turn=1,
-            unit_name="Test Knight", 
-            unit_id="test_123",
-            action_name="Move",
-            action_type="Movement",
+            timeline_time=1,
+            unit=mock_unit,  # type: ignore[arg-type]
+            action=mock_action,  # type: ignore[arg-type]
             success=True
         )
         
@@ -308,11 +320,10 @@ class TestManagerErrorHandling:
         event_manager.subscribe(EventType.UNIT_TURN_STARTED, working_handler)
         
         # Publish event
+        mock_unit = MockUnit("Test", "test_123", Team.PLAYER)
         turn_event = UnitTurnStarted(
-            turn=1,
-            unit_name="Test",
-            unit_id="test_123", 
-            team=Team.PLAYER
+            timeline_time=1,
+            unit=mock_unit  # type: ignore[arg-type]
         )
         
         # Should not raise exception, working handler should still be called
@@ -372,11 +383,10 @@ class TestManagerStateMaintenance:
         assert initial_stats['events_processed'] == 0
         
         # Test normal publish + process flow
+        mock_unit = MockUnit("Test", "test", Team.PLAYER)
         mock_event = UnitTurnStarted(
-            turn=1,
-            unit_name="Test",
-            unit_id="test",
-            team=Team.PLAYER
+            timeline_time=1,
+            unit=mock_unit  # type: ignore[arg-type]
         )
         event_manager.publish(mock_event)
         event_manager.process_events()

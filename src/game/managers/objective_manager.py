@@ -13,10 +13,11 @@ Design Principles:
 from typing import TYPE_CHECKING
 from collections import defaultdict
 
-from ...core.events.events import GameEvent, EventType, ObjectiveContext, UnitDefeated, LogMessage, GameEnded
+from ...core.events import GameEvent, EventType, ObjectiveContext, UnitDefeated, LogMessage, GameEnded
 from ...core.game_view import GameView
-from ...core.data.game_enums import ObjectiveStatus, Team
+from ...core.data import ObjectiveStatus, Team
 from ..scenarios.objectives import Objective, DefeatAllEnemiesObjective
+from .log_manager import LogLevel
 
 if TYPE_CHECKING:
     from ...core.events.event_manager import EventManager
@@ -51,12 +52,21 @@ class ObjectiveManager:
     
     def _emit_log(self, message: str, category: str = "OBJECTIVE", level: str = "DEBUG") -> None:
         """Emit a log message event."""
+        # Map string level to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
         self.event_manager.publish(
             LogMessage(
-                turn=0,  # TODO: Get current turn from game state
+                timeline_time=0,  # TODO: Get current timeline time from game state
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="ObjectiveManager"
             ),
             source="ObjectiveManager"
@@ -101,8 +111,8 @@ class ObjectiveManager:
         """
         
         # Log enemy defeat events for debugging
-        if isinstance(event, UnitDefeated) and event.team == Team.ENEMY:
-            self._emit_log(f"Processing enemy defeat: {event.unit_name}", level="INFO")
+        if isinstance(event, UnitDefeated) and event.unit.team == Team.ENEMY:
+            self._emit_log(f"Processing enemy defeat: {event.unit.name}", level="INFO")
         
         interested_objectives = self._event_subscribers.get(event.event_type, [])
         if not interested_objectives:
@@ -151,7 +161,7 @@ class ObjectiveManager:
             self._emit_log("Victory conditions met!", level="INFO")
             self.event_manager.publish(
                 GameEnded(
-                    turn=0,  # TODO: Get current turn from game state
+                    timeline_time=0,  # TODO: Get current timeline time from game state
                     result="victory",
                 ),
                 source="ObjectiveManager",
@@ -163,7 +173,7 @@ class ObjectiveManager:
             self._emit_log("Defeat conditions met!", level="INFO")
             self.event_manager.publish(
                 GameEnded(
-                    turn=0,  # TODO: Get current turn from game state
+                    timeline_time=0,  # TODO: Get current timeline time from game state
                     result="defeat",
                 ),
                 source="ObjectiveManager",

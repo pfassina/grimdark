@@ -6,9 +6,10 @@ This package contains the core combat logic with clear separation of concerns:
 """
 
 from .battle_calculator import BattleCalculator
-from .combat_resolver import CombatResolver
+from .combat_resolver import CombatResolver, CombatResult
 
 __all__ = [
     "BattleCalculator",
     "CombatResolver",
+    "CombatResult",
 ]

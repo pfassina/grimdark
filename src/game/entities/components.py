@@ -6,16 +6,15 @@ including the 5 core unit components: Actor, Health, Movement, Combat, and Statu
 
 from typing import TYPE_CHECKING, cast
 
-from ...core.entities.components import Component
-from ...core.data.game_enums import UnitClass, Team, UNIT_CLASS_NAMES
-from ...core.data.game_info import UNIT_CLASS_DATA
-from ...core.data.data_structures import Vector2
+from ...core.entities import Component
+from ...core.data import UnitClass, Team, UNIT_CLASS_NAMES, UNIT_CLASS_DATA, Vector2, AOEPattern
+from ...core.wounds import WoundEffect
 
 if TYPE_CHECKING:
     from ...core.entities.components import Entity
     from ...core.data.game_info import UnitClassInfo
     from ..systems.interrupt_system import PreparedAction
-    from ...core.wounds import Wound, WoundEffect
+    from ...core.wounds import Wound
     from ..ai.ai_behaviors import AIBehavior, AIDecision
     from ..map import GameMap
     from ...core.engine.timeline import Timeline
@@ -263,7 +262,7 @@ class CombatComponent(Component):
     
     def __init__(self, entity: "Entity", strength: int, defense: int, 
                  attack_range_min: int, attack_range_max: int, 
-                 aoe_pattern: str = "single"):
+                 aoe_pattern: AOEPattern = AOEPattern.SINGLE):
         """Initialize combat component.
         
         Args:
@@ -272,7 +271,7 @@ class CombatComponent(Component):
             defense: Defense value
             attack_range_min: Minimum attack range
             attack_range_max: Maximum attack range
-            aoe_pattern: Area of effect pattern ("single", "cross", etc.)
+            aoe_pattern: Area of effect pattern enum
         """
         super().__init__(entity)
         self.strength = strength
@@ -761,7 +760,6 @@ class WoundComponent(Component):
         Args:
             entity: The entity this component belongs to
         """
-        from ...core.wounds import Wound
         super().__init__(entity)
         self.active_wounds: list[Wound] = []
         self.permanent_scars: list[Wound] = []
@@ -806,7 +804,6 @@ class WoundComponent(Component):
         Returns:
             Combined wound effect
         """
-        from ...core.wounds import WoundEffect
         
         if not self.active_wounds and not self.permanent_scars:
             return WoundEffect()
@@ -903,7 +900,6 @@ class AIComponent(Component):
             ai_behavior: The AI behavior strategy to use
         """
         super().__init__(entity)
-        from ..ai.ai_behaviors import AIBehavior
         self.behavior: AIBehavior = ai_behavior
         self.memory: dict = {}  # For learning and adaptation in future
     
@@ -930,7 +926,6 @@ class AIComponent(Component):
                 break
         
         if unit is None:
-            from ..ai.ai_behaviors import AIDecision
             return AIDecision(
                 action_name="Wait",
                 confidence=0.0,

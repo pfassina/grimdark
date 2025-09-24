@@ -15,7 +15,7 @@ if TYPE_CHECKING:
     from ...core.engine.game_state import GameState
     from ..map import GameMap
 
-from ...core.events.events import (
+from ...core.events import (
     EventType,
     GameEvent,
     LogMessage,
@@ -24,7 +24,8 @@ from ...core.events.events import (
     UnitTurnEnded,
     UnitTurnStarted,
 )
-from ...core.data.game_enums import Team
+from ...core.data import Team
+from .log_manager import LogLevel
 
 
 class SelectionManager:
@@ -51,7 +52,7 @@ class SelectionManager:
 
         # Emit initialization event
         self.event_manager.publish(
-            ManagerInitialized(turn=0, manager_name="SelectionManager"),
+            ManagerInitialized(timeline_time=0, manager_name="SelectionManager"),
             source="SelectionManager",
         )
 
@@ -76,12 +77,12 @@ class SelectionManager:
         )
 
     def _emit_log(
-        self, message: str, category: str = "SELECTION", level: str = "DEBUG"
+        self, message: str, category: str = "SELECTION", level: LogLevel = LogLevel.DEBUG
     ) -> None:
         """Emit a log message event."""
         self.event_manager.publish(
             LogMessage(
-                turn=self.state.battle.current_turn,
+                timeline_time=self.state.battle.timeline.current_time,
                 message=message,
                 category=category,
                 level=level,
@@ -109,7 +110,7 @@ class SelectionManager:
         
         # Only allow selecting player units
         if unit.team != Team.PLAYER:
-            self._emit_log(f"Cannot select {unit.name} - not a player unit", level="WARNING")
+            self._emit_log(f"Cannot select {unit.name} - not a player unit", level=LogLevel.WARNING)
             return False
         
         # Check if it's the unit's turn
@@ -117,7 +118,7 @@ class SelectionManager:
             unit.unit_id != self.state.battle.current_acting_unit_id):
             self._emit_log(
                 f"Cannot select {unit.name} - not their turn (current: {self.state.battle.current_acting_unit_id})",
-                level="WARNING"
+                level=LogLevel.WARNING
             )
             return False
         
@@ -166,20 +167,19 @@ class SelectionManager:
         assert isinstance(event, UnitDefeated), f"Expected UnitDefeated, got {type(event)}"
         
         # Clear selection if the defeated unit was selected or acting
-        if (self.state.battle.selected_unit_id == event.unit_id or 
-            self.state.battle.current_acting_unit_id == event.unit_id):
+        if (self.state.battle.selected_unit_id == event.unit.unit_id or 
+            self.state.battle.current_acting_unit_id == event.unit.unit_id):
             self.clear_selection()
-            self._emit_log(f"Cleared selection for defeated unit {event.unit_name}")
+            self._emit_log(f"Cleared selection for defeated unit {event.unit.name}")
 
     def _handle_unit_turn_started(self, event: GameEvent) -> None:
         """Handle unit turn started by positioning cursor and selecting unit."""
         assert isinstance(event, UnitTurnStarted), f"Expected UnitTurnStarted, got {type(event)}"
         
-        unit = self.game_map.get_unit(event.unit_id)
-        assert unit, f"Unit {event.unit_id} not found on map"
+        unit = event.unit
         
         # Position cursor and select unit (for all units, AI and player)
-        self.position_cursor_and_select_unit(event.unit_id)
+        self.position_cursor_and_select_unit(unit.unit_id)
         
         if unit.team == Team.PLAYER:
             self._emit_log(f"Player unit {unit.name} turn started - ready for input")

@@ -20,8 +20,8 @@ from enum import Enum, auto
 from typing import TYPE_CHECKING, Optional, List, Tuple
 import random
 
-from ...core.engine.actions import get_available_actions, create_action_by_name
-from ...core.data.data_structures import Vector2
+from ...core.engine import get_available_actions, create_action_by_name
+from ...core.data import Vector2
 
 if TYPE_CHECKING:
     from ..entities.unit import Unit
@@ -125,17 +125,13 @@ class AIController(ABC):
             if "Quick" in action_name and len(assessment.attack_opportunities) > 1:
                 base_priority += 0.2
                 
-        # Factor in morale state
-        try:
-            morale = unit.morale.get_effective_morale()
-            if morale < 40:  # Panicked units prefer quick, safe actions
-                if "Quick" in action_name and "Move" in action_name:
-                    base_priority += 0.4
-                elif "Attack" in action_name:
-                    base_priority -= 0.3
-        except (AttributeError, KeyError):
-            # Morale component might not exist on all units
-            pass
+        # Factor in morale state - morale component always exists
+        morale = unit.morale.get_effective_morale()
+        if morale < 40:  # Panicked units prefer quick, safe actions
+            if "Quick" in action_name and "Move" in action_name:
+                base_priority += 0.4
+            elif "Attack" in action_name:
+                base_priority -= 0.3
                     
         return max(0.0, min(1.0, base_priority))
 
@@ -278,22 +274,17 @@ class BasicAI(AIController):
         elif len(nearby_enemies) >= 1:
             threat_level = ThreatLevel.MODERATE
             
-        # Calculate timeline pressure based on upcoming enemy actions
-        timeline_pressure = 0.0
-        try:
-            preview = timeline.get_preview(5)  # Look at next 5 timeline entries
-            enemy_actions_soon = 0
-            for entry in preview:
-                if entry.entity_type == "unit":
-                    entry_unit = game_map.get_unit(entry.entity_id)
-                    assert entry_unit is not None, f"Timeline entry references non-existent unit: {entry.entity_id}"
-                    if entry_unit.team != unit.team:
-                        enemy_actions_soon += 1
-                        
-            timeline_pressure = min(1.0, enemy_actions_soon / 3.0)
-        except (AttributeError, IndexError):
-            # Timeline preview might not be available
-            timeline_pressure = 0.0
+        # Calculate timeline pressure based on upcoming enemy actions  
+        preview = timeline.get_preview(5)  # Look at next 5 timeline entries
+        enemy_actions_soon = 0
+        for entry in preview:
+            if entry.entity_type == "unit":
+                entry_unit = game_map.get_unit(entry.entity_id)
+                assert entry_unit is not None, f"Timeline entry references non-existent unit: {entry.entity_id}"
+                if entry_unit.team != unit.team:
+                    enemy_actions_soon += 1
+                    
+        timeline_pressure = min(1.0, enemy_actions_soon / 3.0)
         
         return TacticalAssessment(
             threat_level=threat_level,

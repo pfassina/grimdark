@@ -6,7 +6,7 @@ combat resolution and the game state.
 """
 from typing import TYPE_CHECKING, Optional
 
-from ...core.data.data_structures import Vector2, VectorArray
+from ...core.data import VectorArray
 
 if TYPE_CHECKING:
     from ..map import GameMap
@@ -14,10 +14,10 @@ if TYPE_CHECKING:
     from ...core.engine.game_state import GameState
     from ...core.events.event_manager import EventManager
 
-from ..combat.battle_calculator import BattleCalculator
-from ..combat.combat_resolver import CombatResolver, CombatResult
-from ...core.events.events import (
-    AttackTargetingSetup, AttackResolved, ManagerInitialized, ActionExecuted
+from ..combat import BattleCalculator
+from ...core.engine import BattlePhase
+from ...core.events import (
+    ActionExecuted, AttackTargetingSetup, ManagerInitialized, EventType, UnitTurnEnded
 )
 
 
@@ -33,30 +33,54 @@ class CombatManager:
         self.game_map = game_map
         self.state = game_state
         self.event_manager = event_manager
-        self.resolver = CombatResolver(game_map, event_manager=event_manager)
         self.calculator = BattleCalculator()
         
         # Subscribe to cursor movement events for real-time targeting updates
-        from ...core.events import EventType
         self.event_manager.subscribe(
             EventType.CURSOR_MOVED,
             self._handle_cursor_moved,
             subscriber_name="CombatManager.cursor_moved"
         )
         
+        # Subscribe to action completion events to clear attack state
+        self.event_manager.subscribe(
+            EventType.ACTION_EXECUTED,
+            self._handle_action_executed,
+            subscriber_name="CombatManager.action_executed"
+        )
+        self.event_manager.subscribe(
+            EventType.UNIT_TURN_ENDED,
+            self._handle_unit_turn_ended,
+            subscriber_name="CombatManager.unit_turn_ended"
+        )
+        
         # Emit initialization event
         self.event_manager.publish(
-            ManagerInitialized(turn=0, manager_name="CombatManager"),
+            ManagerInitialized(timeline_time=0, manager_name="CombatManager"),
             source="CombatManager"
         )
         
     def _handle_cursor_moved(self, event) -> None:
         """Handle cursor movement events to update targeting in real-time."""
         # Only update targeting if we're in attack targeting mode and have attack range set
-        if (self.state.battle.phase.name in ["ACTION_EXECUTION", "ACTION_TARGETING"] 
+        if (self.state.battle.phase in [BattlePhase.ACTION_EXECUTION, BattlePhase.ACTION_TARGETING] 
             and self.state.battle.attack_range 
             and event.context == "targeting"):
             self.update_attack_targeting()
+    
+    def _handle_action_executed(self, event) -> None:
+        """Handle action execution completion to clear attack state."""
+        assert isinstance(event, ActionExecuted), f"Expected ActionExecuted, got {type(event)}"
+        
+        # Clear attack state after any action is executed
+        self.clear_attack_state()
+    
+    def _handle_unit_turn_ended(self, event) -> None:
+        """Handle unit turn ending to clear attack state."""
+        assert isinstance(event, UnitTurnEnded), f"Expected UnitTurnEnded, got {type(event)}"
+        
+        # Clear attack state when a unit's turn ends
+        self.clear_attack_state()
         
     def setup_attack_targeting(self, unit: "Unit") -> None:
         """Set up attack targeting for a unit."""
@@ -76,11 +100,11 @@ class CombatManager:
         self.update_attack_targeting()
         
         # Emit attack targeting setup event
+        timeline_time = self.state.battle.timeline.current_time if self.state.battle else 0
         self.event_manager.publish(
             AttackTargetingSetup(
-                turn=0,  # TODO: Get actual turn from game state
-                attacker_name=unit.name,
-                attacker_id=unit.unit_id,
+                timeline_time=timeline_time,
+                attacker=unit,
                 attack_range_size=len(attack_range),
                 targetable_enemies=len(self.state.battle.targetable_enemies)
             ),
@@ -112,11 +136,18 @@ class CombatManager:
             if unit is None:
                 raise ValueError(f"Selected unit '{self.state.battle.selected_unit_id}' not found on map. UI state inconsistent with game state.")
             aoe_pattern = unit.combat.aoe_pattern
-            self.state.battle.aoe_tiles = self.game_map.calculate_aoe_tiles(
-                cursor_pos, aoe_pattern
-            )
+            aoe_tiles = self.game_map.calculate_aoe_tiles(cursor_pos, aoe_pattern)
+            self.state.battle.aoe_tiles = aoe_tiles
+            
+            # Check for friendly fire preview (UI only, no events)
+            targets_in_aoe = self.game_map.get_units_in_positions(aoe_tiles)
+            friendly_targets = [t for t in targets_in_aoe if t.team == unit.team and t.unit_id != unit.unit_id]
+            
+            # Store friendly targets for UI highlighting (renderer will display them differently)
+            self.state.battle.friendly_fire_preview = VectorArray([t.position for t in friendly_targets])
         else:
             self.state.battle.aoe_tiles = VectorArray()
+            self.state.battle.friendly_fire_preview = VectorArray()
     
     def _update_aoe_tiles_only(self) -> None:
         """Update AOE tiles based on cursor position without refreshing targetable enemies."""
@@ -143,73 +174,6 @@ class CombatManager:
         else:
             self.state.battle.aoe_tiles = VectorArray()
     
-    def execute_attack_at_cursor(self) -> bool:
-        """
-        Execute AOE attack centered on cursor position.
-        
-        Returns:
-            True if attack was executed, False if invalid or cancelled
-        """
-        cursor_position = self.state.cursor.position
-
-        if not self.state.battle.is_in_attack_range(cursor_position):
-            return False
-
-        if not self.state.battle.selected_unit_id:
-            return False
-
-        attacker = self.game_map.get_unit(self.state.battle.selected_unit_id)
-        if not attacker:
-            return False
-        
-        # Execute attack using resolver
-        result = self.resolver.execute_aoe_attack(
-            attacker, 
-            cursor_position, 
-            attacker.combat.aoe_pattern
-        )
-        
-        # Must have at least one valid target to attack
-        if not result.targets_hit:
-            return False
-        
-        # If there are friendly units that will be hit, request confirmation
-        if result.friendly_fire:
-            friendly_names = [t.name for t in result.targets_hit if t.team == attacker.team]
-            self._store_friendly_fire_confirmation(cursor_position, result, friendly_names)
-            return False  # Wait for confirmation
-        
-        # No friendly fire, complete the attack
-        self._complete_attack(attacker, result)
-        return True
-    
-    def execute_confirmed_attack(self) -> bool:
-        """Execute an attack that was confirmed by the player after friendly fire warning."""
-        if not self.state.battle.selected_unit_id:
-            return False
-
-        attacker = self.game_map.get_unit(self.state.battle.selected_unit_id)
-        if not attacker:
-            return False
-        
-        # Get the stored attack data
-        pending_attack = self.state.state_data.get("pending_attack")
-        if not pending_attack:
-            return False
-        
-        # Recreate the combat result from stored data
-        result = CombatResult()
-        result.targets_hit = pending_attack["targets_hit"]
-        
-        # Apply damage using resolver's method
-        self.resolver._apply_damage_to_targets(attacker, result)
-        
-        # Clear the stored attack data
-        self._clear_friendly_fire_data()
-        
-        # Complete attack processing
-        self._complete_attack(attacker, result)
-        return True
     
     def refresh_targetable_enemies(self, attacking_unit: "Unit") -> None:
         """Update the list of targetable enemy units (for tab cycling - only enemies)."""
@@ -299,78 +263,11 @@ class CombatManager:
             return None
         return self.calculator.calculate_forecast(attacker, defender)
     
-    def _store_friendly_fire_confirmation(
-        self, 
-        cursor_position: Vector2, 
-        result: CombatResult, 
-        friendly_names: list[str]
-    ) -> None:
-        """Store attack data for friendly fire confirmation."""
-        if len(friendly_names) == 1:
-            self.state.state_data["friendly_fire_message"] = (
-                f"This attack will hit your ally {friendly_names[0]}!"
-            )
-        else:
-            self.state.state_data["friendly_fire_message"] = (
-                f"This attack will hit your allies: {', '.join(friendly_names)}!"
-            )
-        
-        # Store the attack data for later execution
-        self.state.state_data["pending_attack"] = {
-            "cursor_position": cursor_position,
-            "targets_hit": result.targets_hit,
-        }
-        
-        self.state.ui.open_dialog("confirm_friendly_fire")
-    
-    def _clear_friendly_fire_data(self) -> None:
-        """Clear stored friendly fire confirmation data."""
-        if "pending_attack" in self.state.state_data:
-            del self.state.state_data["pending_attack"]
-        if "friendly_fire_message" in self.state.state_data:
-            del self.state.state_data["friendly_fire_message"]
-    
-    def _complete_attack(self, attacker: "Unit", result: CombatResult) -> None:
-        """Complete attack processing after damage has been applied."""
-        # Emit attack resolved event
-        self.event_manager.publish(
-            AttackResolved(
-                turn=0,  # TODO: Get actual turn
-                attacker_name=attacker.name,
-                target_names=[t.name for t in result.targets_hit],
-                total_damage=sum(result.damage_dealt.values()),
-                defeated_count=len(result.defeated_targets)
-            ),
-            source="CombatManager"
-        )
-        
-        # Note: UnitDefeated events are already published by CombatResolver during damage application
-        # No need to duplicate them here
-        
-        # Mark attacker as having acted and moved (can't do anything else)
-        attacker.has_moved = True  # Prevent further movement after attacking
-        attacker.has_acted = True  # Prevent further actions
-        
-        # Clear attack UI state (ranges, targeting, etc.)
-        self.clear_attack_state()
-        
-        # Emit action executed event to return to timeline processing
-        self.event_manager.publish(
-            ActionExecuted(
-                turn=self.state.battle.current_turn,
-                unit_name=attacker.name,
-                unit_id=attacker.unit_id,
-                action_name="Attack",
-                action_type="Attack",
-                success=True
-            ),
-            source="CombatManager"
-        )
-        
     def clear_attack_state(self) -> None:
         """Clear all attack-related state data."""
         self.state.battle.attack_range = VectorArray()
         self.state.battle.aoe_tiles = VectorArray()
+        self.state.battle.friendly_fire_preview = VectorArray()
         self.state.battle.targetable_enemies.clear()
         self.state.battle.current_target_index = 0
         self.state.battle.selected_target = None

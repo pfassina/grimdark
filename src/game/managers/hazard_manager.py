@@ -14,10 +14,12 @@ from ...core.hazards import (
     Hazard, HazardType, HazardAction, HazardEffect,
     create_hazard
 )
-from ...core.data.data_structures import Vector2
-from ...core.events.events import (
-    UnitMoved, TurnStarted, LogMessage, EventType, GameEvent
+from ...core.data import Vector2, TerrainType, TERRAIN_DATA
+from ...core.events import (
+    UnitMoved, TurnStarted, LogMessage, EventType, GameEvent, UnitDamaged
 )
+from ...core.wounds import WoundType
+from .log_manager import LogLevel
 
 if TYPE_CHECKING:
     from ..entities.unit import Unit
@@ -80,16 +82,25 @@ class HazardManager:
         
     def _emit_log(self, message: str, category: str = "HAZARD", level: str = "INFO") -> None:
         """Emit a log message event."""
-        current_turn = getattr(self.game_state, 'turn', 0)
-        if hasattr(self.game_state, 'battle') and hasattr(self.game_state.battle, 'current_turn'):
-            current_turn = self.game_state.battle.current_turn
+        # Map string level to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
+        timeline_time = 0
+        if hasattr(self.game_state, 'battle') and hasattr(self.game_state.battle, 'timeline'):
+            timeline_time = self.game_state.battle.timeline.current_time
             
         self.event_manager.publish(
             LogMessage(
-                turn=current_turn,
+                timeline_time=timeline_time,
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="HazardManager"
             ),
             source="HazardManager"
@@ -98,8 +109,8 @@ class HazardManager:
     def _on_unit_moved(self, event: GameEvent) -> None:
         """Handle unit moved event to trigger hazard effects."""
         assert isinstance(event, UnitMoved), f"Expected UnitMoved, got {type(event)}"
-        # Check for hazards at the destination position
-        position = Vector2(event.to_position[0], event.to_position[1])  # Convert (y,x) to Vector2(y,x)
+        # Check for hazards at the destination position (unit.position is the new position)
+        position = event.unit.position
         self.check_hazard_triggers("unit_moved", position=position)
         
     def _on_turn_started(self, event: GameEvent) -> None:
@@ -325,8 +336,6 @@ class HazardManager:
         if self.game_map.is_valid_position(position):
             tile = self.game_map.get_tile(position)
             # Convert string terrain name to TerrainType enum
-            from ...core.data.game_enums import TerrainType
-            from ...core.data.game_info import TERRAIN_DATA
             new_terrain_type = TerrainType[new_terrain.upper()]
             tile.terrain_type = new_terrain_type
             # Trigger recalculation of properties by resetting _info
@@ -482,13 +491,12 @@ class HazardManager:
     
     def _create_damage_event(self, unit: Unit, effect: HazardEffect, hazard_id: str) -> GameEvent:
         """Create damage event"""
-        from src.core.events import UnitTookDamage
-        return UnitTookDamage(
-            turn=getattr(self.game_state, 'turn_count', 0),
-            unit_name=unit.name,
-            team=unit.team,
-            damage_amount=effect.damage,
-            position=(unit.position.y, unit.position.x)
+        return UnitDamaged(
+            timeline_time=self.game_state.battle.timeline.current_time if self.game_state.battle else 0,
+            unit=unit,
+            damage=effect.damage,
+            damage_type=WoundType.CRUSH,  # Environmental damage causes blunt trauma
+            source="Hazard"
         )
     
     def _create_spread_event(self, parent_id: str, new_id: str, position: Vector2) -> None:
@@ -508,14 +516,11 @@ class HazardManager:
     
     def _create_move_event(self, unit: Unit, new_position: Vector2, message: str) -> GameEvent:
         """Create forced move event using standard UnitMoved event"""
-        from src.core.events import UnitMoved
+        # UnitMoved is already imported at the top
         return UnitMoved(
-            turn=getattr(self.game_state, 'turn_count', 0),
-            unit_name=unit.name,
-            unit_id=unit.unit_id,
-            team=unit.team,
-            from_position=(unit.position.y, unit.position.x),
-            to_position=(new_position.y, new_position.x)
+            timeline_time=self.game_state.battle.timeline.current_time if self.game_state.battle else 0,
+            unit=unit,
+            from_position=unit.position  # Note: unit will be moved after this event
         )
     
     def _create_warning_event(self, position: Vector2, message: str) -> None:

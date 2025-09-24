@@ -8,11 +8,12 @@ from typing import TYPE_CHECKING, Any, cast
 from dataclasses import dataclass
 from enum import Enum, auto
 
-from ...core.data.data_structures import Vector2
-from ...core.events.events import (
-    LogMessage, EventType
+from ...core.data import Vector2
+from ...core.events import (
+    LogMessage, EventType, TurnStarted, UnitDefeated
 )
-from ..entities.components import ActorComponent
+from .log_manager import LogLevel
+from ..entities.components import MoraleComponent
 
 if TYPE_CHECKING:
     from ...core.entities.components import Entity
@@ -129,12 +130,21 @@ class EscalationManager:
         
     def _emit_log(self, message: str, category: str = "ESCALATION", level: str = "INFO") -> None:
         """Emit a log message event."""
+        # Map string level to LogLevel enum
+        level_map = {
+            "DEBUG": LogLevel.DEBUG,
+            "INFO": LogLevel.INFO,
+            "WARNING": LogLevel.WARNING,
+            "ERROR": LogLevel.ERROR
+        }
+        log_level = level_map.get(level, LogLevel.INFO)
+        
         self.event_manager.publish(
             LogMessage(
-                turn=self.current_turn,
+                timeline_time=self.game_state.battle.timeline.current_time if self.game_state.battle else 0,
                 message=message,
                 category=category,
-                level=level,
+                level=log_level,
                 source="EscalationManager"
             ),
             source="EscalationManager"
@@ -142,7 +152,6 @@ class EscalationManager:
         
     def _on_turn_started(self, event: "GameEvent") -> None:
         """Handle turn started event for escalation processing."""
-        from ...core.events import TurnStarted
         assert isinstance(event, TurnStarted), f"Expected TurnStarted event, got {type(event).__name__}"
             
         # Extract turn number from game state (since TurnStarted doesn't include turn number)
@@ -155,20 +164,13 @@ class EscalationManager:
         
     def _on_unit_defeated(self, event: "GameEvent") -> None:
         """Handle unit defeated event for casualty tracking."""
-        from ...core.events import UnitDefeated
         assert isinstance(event, UnitDefeated), f"Expected UnitDefeated event, got {type(event).__name__}"
             
         # Determine if this was an enemy unit based on team
-        is_enemy = event.team != getattr(self.game_state, 'player_team', None)
+        is_enemy = event.unit.team != getattr(self.game_state, 'player_team', None)
         
-        # Find the defeated unit entity for reporting
-        for unit in self.game_map.units:
-            actor = unit.entity.get_component("Actor")
-            assert actor is not None, f"Unit {unit.unit_id} missing Actor component"
-            assert isinstance(actor, ActorComponent), f"Actor component for {unit.unit_id} is not ActorComponent"
-            if actor.name == event.unit_name:
-                self.report_casualty(unit.entity, is_enemy)
-                break
+        # Report casualty using the unit directly from the event
+        self.report_casualty(event.unit.entity, is_enemy)
     
     def _initialize_scenario_escalation(self) -> None:
         """Initialize escalation events based on scenario configuration."""
@@ -387,7 +389,6 @@ class EscalationManager:
         for unit in self.game_map.units:
             morale_component = unit.entity.get_component("Morale")
             if morale_component:
-                from ..entities.components import MoraleComponent
                 morale = cast(MoraleComponent, morale_component)
                 morale.modify_morale(morale_penalty, "prolonged_battle")
     
